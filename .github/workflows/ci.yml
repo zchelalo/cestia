@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_DB: cestia_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cestia_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache-dependency-path: apps/api/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: SQLC generation is reproducible
+        run: pnpm nx run api:sqlc-check
+      - run: pnpm nx run-many -t lint,typecheck,test,build
+      - name: PostgreSQL integration
+        env:
+          CESTIA_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cestia_test?sslmode=disable
+        run: pnpm nx run api:test-integration
+      - name: Contract
+        run: npx --yes @redocly/cli@2.0.8 lint packages/api-contract/openapi.yaml
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache-dependency-path: apps/api/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: Start PostgreSQL and Mailpit
+        run: docker compose -f .docker/compose.yml up -d --wait
+      - name: Migrate
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable
+        run: go run ./cmd/migrate
+      - name: Start API
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable
+          APP_ORIGIN: http://localhost:5173
+          REGISTER_RATE_LIMIT: "100"
+          TOKEN_SECRET: development-only-secret-change-before-production
+          SMTP_HOST: localhost
+          SMTP_PORT: "1025"
+          SMTP_FROM: Cestia <no-reply@cestia.local>
+        run: nohup go run ./cmd/api > /tmp/cestia-api.log 2>&1 &
+      - name: Start web
+        run: nohup pnpm --dir apps/web dev --host 127.0.0.1 > /tmp/cestia-web.log 2>&1 &
+      - name: Wait for Cestia
+        run: |
+          curl --fail --retry 30 --retry-connrefused --retry-delay 1 http://localhost:8000/api/health
+          curl --fail --retry 30 --retry-connrefused --retry-delay 1 http://localhost:5173/sign-in
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright
+        env:
+          CESTIA_E2E_BASE_URL: http://localhost:5173
+        run: pnpm nx run web-e2e:e2e
+      - name: Diagnostic logs
+        if: failure()
+        run: |
+          cat /tmp/cestia-api.log || true
+          cat /tmp/cestia-web.log || true
