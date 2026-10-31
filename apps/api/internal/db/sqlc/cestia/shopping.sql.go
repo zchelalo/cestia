@@ -373,17 +373,37 @@ func (q *Queries) GetActivePurchaseForItem(ctx context.Context, itemID uuid.UUID
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = $1::uuid
-  AND deleted_at IS NULL
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = $1::uuid
+  AND i.deleted_at IS NULL
 `
 
-func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (ShoppingListItem, error) {
+type GetItemRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	ListID             uuid.UUID  `json:"list_id"`
+	Name               string     `json:"name"`
+	Description        string     `json:"description"`
+	Quantity           string     `json:"quantity"`
+	Unit               string     `json:"unit"`
+	EstimatedUnitPrice *string    `json:"estimated_unit_price"`
+	CreatedBy          uuid.UUID  `json:"created_by"`
+	AssignedTo         *uuid.UUID `json:"assigned_to"`
+	Notes              string     `json:"notes"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	AssignedToName     *string    `json:"assigned_to_name"`
+}
+
+func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (GetItemRow, error) {
 	row := q.db.QueryRow(ctx, getItem, id)
-	var i ShoppingListItem
+	var i GetItemRow
 	err := row.Scan(
 		&i.ID,
 		&i.ListID,
@@ -399,23 +419,44 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (ShoppingListItem, 
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AssignedToName,
 	)
 	return i, err
 }
 
 const getItemForUpdate = `-- name: GetItemForUpdate :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = $1::uuid
-  AND deleted_at IS NULL
-FOR UPDATE
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = $1::uuid
+  AND i.deleted_at IS NULL
+FOR UPDATE OF i
 `
 
-func (q *Queries) GetItemForUpdate(ctx context.Context, id uuid.UUID) (ShoppingListItem, error) {
+type GetItemForUpdateRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	ListID             uuid.UUID  `json:"list_id"`
+	Name               string     `json:"name"`
+	Description        string     `json:"description"`
+	Quantity           string     `json:"quantity"`
+	Unit               string     `json:"unit"`
+	EstimatedUnitPrice *string    `json:"estimated_unit_price"`
+	CreatedBy          uuid.UUID  `json:"created_by"`
+	AssignedTo         *uuid.UUID `json:"assigned_to"`
+	Notes              string     `json:"notes"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	AssignedToName     *string    `json:"assigned_to_name"`
+}
+
+func (q *Queries) GetItemForUpdate(ctx context.Context, id uuid.UUID) (GetItemForUpdateRow, error) {
 	row := q.db.QueryRow(ctx, getItemForUpdate, id)
-	var i ShoppingListItem
+	var i GetItemForUpdateRow
 	err := row.Scan(
 		&i.ID,
 		&i.ListID,
@@ -431,22 +472,43 @@ func (q *Queries) GetItemForUpdate(ctx context.Context, id uuid.UUID) (ShoppingL
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AssignedToName,
 	)
 	return i, err
 }
 
 const getItemForUpdateAny = `-- name: GetItemForUpdateAny :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = $1::uuid
-FOR UPDATE
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = $1::uuid
+FOR UPDATE OF i
 `
 
-func (q *Queries) GetItemForUpdateAny(ctx context.Context, id uuid.UUID) (ShoppingListItem, error) {
+type GetItemForUpdateAnyRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	ListID             uuid.UUID  `json:"list_id"`
+	Name               string     `json:"name"`
+	Description        string     `json:"description"`
+	Quantity           string     `json:"quantity"`
+	Unit               string     `json:"unit"`
+	EstimatedUnitPrice *string    `json:"estimated_unit_price"`
+	CreatedBy          uuid.UUID  `json:"created_by"`
+	AssignedTo         *uuid.UUID `json:"assigned_to"`
+	Notes              string     `json:"notes"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	AssignedToName     *string    `json:"assigned_to_name"`
+}
+
+func (q *Queries) GetItemForUpdateAny(ctx context.Context, id uuid.UUID) (GetItemForUpdateAnyRow, error) {
 	row := q.db.QueryRow(ctx, getItemForUpdateAny, id)
-	var i ShoppingListItem
+	var i GetItemForUpdateAnyRow
 	err := row.Scan(
 		&i.ID,
 		&i.ListID,
@@ -462,6 +524,7 @@ func (q *Queries) GetItemForUpdateAny(ctx context.Context, id uuid.UUID) (Shoppi
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AssignedToName,
 	)
 	return i, err
 }
@@ -1018,22 +1081,42 @@ func (q *Queries) ListGroupLists(ctx context.Context, arg ListGroupListsParams) 
 const listItems = `-- name: ListItems :many
 SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
        i.estimated_unit_price AS estimated_unit_price,
-       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
 FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
 WHERE i.list_id = $1::uuid
   AND i.deleted_at IS NULL
 ORDER BY i.created_at, i.id
 `
 
-func (q *Queries) ListItems(ctx context.Context, listID uuid.UUID) ([]ShoppingListItem, error) {
+type ListItemsRow struct {
+	ID                 uuid.UUID  `json:"id"`
+	ListID             uuid.UUID  `json:"list_id"`
+	Name               string     `json:"name"`
+	Description        string     `json:"description"`
+	Quantity           string     `json:"quantity"`
+	Unit               string     `json:"unit"`
+	EstimatedUnitPrice *string    `json:"estimated_unit_price"`
+	CreatedBy          uuid.UUID  `json:"created_by"`
+	AssignedTo         *uuid.UUID `json:"assigned_to"`
+	Notes              string     `json:"notes"`
+	DeletedAt          *time.Time `json:"deleted_at"`
+	Version            int64      `json:"version"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	AssignedToName     *string    `json:"assigned_to_name"`
+}
+
+func (q *Queries) ListItems(ctx context.Context, listID uuid.UUID) ([]ListItemsRow, error) {
 	rows, err := q.db.Query(ctx, listItems, listID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ShoppingListItem{}
+	items := []ListItemsRow{}
 	for rows.Next() {
-		var i ShoppingListItem
+		var i ListItemsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ListID,
@@ -1049,6 +1132,7 @@ func (q *Queries) ListItems(ctx context.Context, listID uuid.UUID) ([]ShoppingLi
 			&i.Version,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AssignedToName,
 		); err != nil {
 			return nil, err
 		}

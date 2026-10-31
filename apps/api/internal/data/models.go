@@ -104,7 +104,14 @@ type Item struct {
 	Version            int64      `json:"version"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
+	AssignedToName     *string    `json:"assigned_to_name,omitempty"`
 	Purchase           *Purchase  `json:"purchase,omitempty"`
+}
+
+type SelectOption struct {
+	Value       string  `json:"value"`
+	Label       string  `json:"label"`
+	Description *string `json:"description,omitempty"`
 }
 
 type Purchase struct {

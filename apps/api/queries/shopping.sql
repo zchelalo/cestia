@@ -171,36 +171,44 @@ WHERE id = sqlc.arg(id)::uuid;
 -- name: ListItems :many
 SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
        i.estimated_unit_price AS estimated_unit_price,
-       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
 FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
 WHERE i.list_id = sqlc.arg(list_id)::uuid
   AND i.deleted_at IS NULL
 ORDER BY i.created_at, i.id;
 
 -- name: GetItem :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = sqlc.arg(id)::uuid
-  AND deleted_at IS NULL;
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = sqlc.arg(id)::uuid
+  AND i.deleted_at IS NULL;
 
 -- name: GetItemForUpdate :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = sqlc.arg(id)::uuid
-  AND deleted_at IS NULL
-FOR UPDATE;
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = sqlc.arg(id)::uuid
+  AND i.deleted_at IS NULL
+FOR UPDATE OF i;
 
 -- name: GetItemForUpdateAny :one
-SELECT id, list_id, name, description, quantity AS quantity, unit,
-       estimated_unit_price AS estimated_unit_price,
-       created_by, assigned_to, notes, deleted_at, version, created_at, updated_at
-FROM shopping_list_items
-WHERE id = sqlc.arg(id)::uuid
-FOR UPDATE;
+SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
+       i.estimated_unit_price AS estimated_unit_price,
+       i.created_by, i.assigned_to, i.notes, i.deleted_at, i.version, i.created_at, i.updated_at,
+       u.display_name AS assigned_to_name
+FROM shopping_list_items i
+LEFT JOIN users u ON u.id = i.assigned_to
+WHERE i.id = sqlc.arg(id)::uuid
+FOR UPDATE OF i;
 
 -- name: CreateItem :exec
 INSERT INTO shopping_list_items (

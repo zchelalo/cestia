@@ -27,6 +27,17 @@ func New(store *data.Store, tokenSecret string) *Service {
 	return &Service{store: store, tokenSecret: tokenSecret, now: time.Now}
 }
 
+func (s *Service) GroupOptions(ctx context.Context, userID uuid.UUID, search, cursor string, limit int) ([]data.SelectOption, string, error) {
+	return data.ListGroupOptions(ctx, s.store, userID, search, cursor, limit)
+}
+
+func (s *Service) MemberOptions(ctx context.Context, userID, groupID uuid.UUID, search, cursor string, limit int) ([]data.SelectOption, string, error) {
+	if _, err := s.Get(ctx, userID, groupID); err != nil {
+		return nil, "", err
+	}
+	return data.ListGroupMemberOptions(ctx, s.store, groupID, search, cursor, limit)
+}
+
 func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]data.Group, error) {
 	items, err := data.ListGroups(ctx, s.store, userID)
 	if err != nil {

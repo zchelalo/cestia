@@ -103,21 +103,43 @@ func SetListArchived(ctx context.Context, q Querier, id uuid.UUID, archived bool
 	return rows == 1, err
 }
 
-func itemFromRow(row cestia.ShoppingListItem) Item {
+func itemFromRow(row cestia.GetItemRow) Item {
 	return Item{
 		ID: row.ID, ListID: row.ListID, Name: row.Name, Description: row.Description,
 		Quantity: row.Quantity, Unit: row.Unit, EstimatedUnitPrice: row.EstimatedUnitPrice,
 		CreatedBy: row.CreatedBy, AssignedTo: row.AssignedTo, Notes: row.Notes,
 		DeletedAt: row.DeletedAt, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		AssignedToName: row.AssignedToName,
 	}
 }
 
-func itemFromListRow(row cestia.ShoppingListItem) Item {
+func itemFromListRow(row cestia.ListItemsRow) Item {
 	return Item{
 		ID: row.ID, ListID: row.ListID, Name: row.Name, Description: row.Description,
 		Quantity: row.Quantity, Unit: row.Unit, EstimatedUnitPrice: row.EstimatedUnitPrice,
 		CreatedBy: row.CreatedBy, AssignedTo: row.AssignedTo, Notes: row.Notes,
 		DeletedAt: row.DeletedAt, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		AssignedToName: row.AssignedToName,
+	}
+}
+
+func itemFromUpdateRow(row cestia.GetItemForUpdateRow) Item {
+	return Item{
+		ID: row.ID, ListID: row.ListID, Name: row.Name, Description: row.Description,
+		Quantity: row.Quantity, Unit: row.Unit, EstimatedUnitPrice: row.EstimatedUnitPrice,
+		CreatedBy: row.CreatedBy, AssignedTo: row.AssignedTo, Notes: row.Notes,
+		DeletedAt: row.DeletedAt, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		AssignedToName: row.AssignedToName,
+	}
+}
+
+func itemFromUpdateAnyRow(row cestia.GetItemForUpdateAnyRow) Item {
+	return Item{
+		ID: row.ID, ListID: row.ListID, Name: row.Name, Description: row.Description,
+		Quantity: row.Quantity, Unit: row.Unit, EstimatedUnitPrice: row.EstimatedUnitPrice,
+		CreatedBy: row.CreatedBy, AssignedTo: row.AssignedTo, Notes: row.Notes,
+		DeletedAt: row.DeletedAt, Version: row.Version, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		AssignedToName: row.AssignedToName,
 	}
 }
 
@@ -148,7 +170,7 @@ func ItemForUpdate(ctx context.Context, q Querier, itemID uuid.UUID) (Item, erro
 	if err != nil {
 		return Item{}, err
 	}
-	return itemFromRow(row), nil
+	return itemFromUpdateRow(row), nil
 }
 
 // ItemForUpdateAny locks an item even when it has been logically deleted, so
@@ -158,7 +180,7 @@ func ItemForUpdateAny(ctx context.Context, q Querier, itemID uuid.UUID) (Item, e
 	if err != nil {
 		return Item{}, err
 	}
-	return itemFromRow(row), nil
+	return itemFromUpdateAnyRow(row), nil
 }
 
 func CreateItem(ctx context.Context, q Querier, item Item) error {

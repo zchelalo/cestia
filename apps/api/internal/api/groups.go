@@ -1,10 +1,57 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/zchelalo/cestia/apps/api/internal/apperr"
+	"github.com/zchelalo/cestia/apps/api/internal/data"
 )
+
+func (s *Server) groupOptions(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	search := r.URL.Query().Get("search")
+	cursor := r.URL.Query().Get("cursor")
+	options, next, err := s.groups.GroupOptions(r.Context(), currentUser(r.Context()).ID, search, cursor, limit)
+	if errors.Is(err, data.ErrInvalidOptionCursor) {
+		s.writeError(w, r, apperr.BadRequest("invalid_cursor", "El cursor no es válido."))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	s.writeJSON(w, r, http.StatusOK, options, meta(limit, next))
+}
+
+func (s *Server) memberOptions(w http.ResponseWriter, r *http.Request) {
+	groupID, err := parseUUID(r.PathValue("groupId"))
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	search := r.URL.Query().Get("search")
+	cursor := r.URL.Query().Get("cursor")
+	options, next, err := s.groups.MemberOptions(r.Context(), currentUser(r.Context()).ID, groupID, search, cursor, limit)
+	if errors.Is(err, data.ErrInvalidOptionCursor) {
+		s.writeError(w, r, apperr.BadRequest("invalid_cursor", "El cursor no es válido."))
+		return
+	}
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	s.writeJSON(w, r, http.StatusOK, options, meta(limit, next))
+}
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
 	groups, err := s.groups.List(r.Context(), currentUser(r.Context()).ID)

@@ -71,6 +71,8 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/v1/auth/resend-verification", s.authenticated(s.csrf(http.HandlerFunc(s.resendVerification))))
 
 	s.mux.Handle("GET /api/v1/dashboard", s.private(http.HandlerFunc(s.dashboard)))
+	s.mux.Handle("GET /api/v1/groups/options", s.private(http.HandlerFunc(s.groupOptions)))
+	s.mux.Handle("GET /api/v1/groups/{groupId}/members/options", s.private(http.HandlerFunc(s.memberOptions)))
 	s.mux.Handle("GET /api/v1/groups", s.private(http.HandlerFunc(s.listGroups)))
 	s.mux.Handle("POST /api/v1/groups", s.private(s.csrf(http.HandlerFunc(s.createGroup))))
 	s.mux.Handle("GET /api/v1/groups/{groupId}", s.private(http.HandlerFunc(s.getGroup)))
