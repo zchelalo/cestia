@@ -1,0 +1,6 @@
+Hola {{.Name}},
+
+Confirma tu cuenta de Cestia abriendo este enlace:
+{{.URL}}
+
+El enlace caduca en 24 horas. Si no creaste esta cuenta, ignora este mensaje.
