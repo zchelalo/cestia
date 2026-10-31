@@ -7,16 +7,58 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
+        "cwd": ".",
+        "command": "node scripts/setup-env.mjs && docker compose --env-file apps/api/.env -f .docker/compose.yml up --build api"
+      },
+      "cache": false
+    },
+    "serve-local": {
+      "executor": "nx:run-commands",
+      "options": {
         "cwd": "apps/api",
         "command": "go run ./cmd/api"
-      }
+      },
+      "cache": false
     },
     "migrate": {
       "executor": "nx:run-commands",
       "options": {
+        "cwd": ".",
+        "command": "node scripts/setup-env.mjs && docker compose --env-file apps/api/.env -f .docker/compose.yml run --rm --no-deps api go run ./cmd/migrate"
+      },
+      "cache": false
+    },
+    "migrate-local": {
+      "executor": "nx:run-commands",
+      "options": {
         "cwd": "apps/api",
         "command": "go run ./cmd/migrate"
-      }
+      },
+      "cache": false
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "node scripts/setup-env.mjs && docker compose --env-file apps/api/.env -f .docker/compose.yml logs -f --tail=200 api"
+      },
+      "cache": false
+    },
+    "restart": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "node scripts/setup-env.mjs && docker compose --env-file apps/api/.env -f .docker/compose.yml up -d --force-recreate api"
+      },
+      "cache": false
+    },
+    "docker-build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "node scripts/setup-env.mjs && docker compose --env-file apps/api/.env -f .docker/compose.yml build api"
+      },
+      "cache": false
     },
     "build": {
       "executor": "nx:run-commands",

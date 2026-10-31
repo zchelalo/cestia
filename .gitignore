@@ -5,6 +5,7 @@ coverage/
 playwright-report/
 test-results/
 apps/api/bin/
+apps/api/tmp/
 apps/api/.env
 *.log
 *.tsbuildinfo

@@ -13,17 +13,31 @@ calcula deudas, saldos, divisiones ni liquidaciones.
 ## Inicio local
 
 ```bash
-cp .env.example apps/api/.env
 pnpm install
-docker compose -f .docker/compose.yml up -d
-pnpm nx run api:migrate
-pnpm nx serve api
-pnpm nx serve web
+pnpm dev
 ```
 
-La API escucha en `http://localhost:8000`, la SPA en
-`http://localhost:5173` y Mailpit en `http://localhost:8025`.
+Ese comando copia `apps/api/.env` si no existe, construye y levanta PostgreSQL,
+Mailpit y la API con Air, aplica migraciones y arranca Vite. La API escucha en
+`http://localhost:8000`, la SPA en `http://localhost:5173` y Mailpit en
+`http://localhost:8025`.
 
+Guardar archivos Go, migraciones o plantillas de correo recompila y reinicia la
+API dentro del contenedor.
+
+Comandos útiles:
+
+```bash
+pnpm nx run dev:env       # copiar envs faltantes sin sobrescribir
+pnpm nx run dev:infra     # solo PostgreSQL y Mailpit
+pnpm nx run dev:up        # API + infraestructura, sin Vite
+pnpm nx run dev:status    # estado de contenedores
+pnpm nx run dev:logs      # logs del stack
+pnpm nx run dev:down      # detener sin borrar datos
+pnpm nx run api:restart   # recrear la API tras cambiar el env
+```
+
+La API también puede ejecutarse sin Docker con `pnpm nx run api:serve-local`.
 Los correos de verificación, recuperación e invitaciones se capturan en
 Mailpit.
 

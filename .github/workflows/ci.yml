@@ -39,6 +39,8 @@ jobs:
           go-version: 1.27.1
           cache-dependency-path: apps/api/go.sum
       - run: pnpm install --frozen-lockfile
+      - name: Dev tooling tests
+        run: node --test scripts/setup-env.test.mjs
       - name: SQLC generation is reproducible
         run: pnpm nx run api:sqlc-check
       - run: pnpm nx run-many -t lint,typecheck,test,build
@@ -61,29 +63,11 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.27.1
-          cache-dependency-path: apps/api/go.sum
       - run: pnpm install --frozen-lockfile
-      - name: Start PostgreSQL and Mailpit
-        run: docker compose -f .docker/compose.yml up -d --wait
-      - name: Migrate
-        working-directory: apps/api
+      - name: Start stack
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable
-        run: go run ./cmd/migrate
-      - name: Start API
-        working-directory: apps/api
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable
-          APP_ORIGIN: http://localhost:5173
           REGISTER_RATE_LIMIT: "100"
-          TOKEN_SECRET: development-only-secret-change-before-production
-          SMTP_HOST: localhost
-          SMTP_PORT: "1025"
-          SMTP_FROM: Cestia <no-reply@cestia.local>
-        run: nohup go run ./cmd/api > /tmp/cestia-api.log 2>&1 &
+        run: pnpm nx run dev:up
       - name: Start web
         run: nohup pnpm --dir apps/web dev --host 127.0.0.1 > /tmp/cestia-web.log 2>&1 &
       - name: Wait for Cestia
@@ -99,5 +83,8 @@ jobs:
       - name: Diagnostic logs
         if: failure()
         run: |
-          cat /tmp/cestia-api.log || true
+          docker compose --env-file apps/api/.env -f .docker/compose.yml logs --no-color || true
           cat /tmp/cestia-web.log || true
+      - name: Stop stack
+        if: always()
+        run: pnpm nx run dev:down
