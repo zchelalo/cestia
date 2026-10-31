@@ -1,0 +1,34 @@
+{
+  "name": "cestia",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.15.0"
+  },
+  "scripts": {
+    "dev": "nx run-many -t serve --projects=api,web --parallel=2",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test",
+    "build": "nx run-many -t build",
+    "typecheck": "nx run-many -t typecheck",
+    "affected": "nx affected"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@nx/js": "^22.0.0",
+    "@nx/playwright": "^22.0.0",
+    "@nx/vite": "^22.0.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react-swc": "^4.0.0",
+    "jsdom": "^26.1.0",
+    "nx": "^22.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0"
+  }
+}

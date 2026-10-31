@@ -1,0 +1,91 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/api",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run ./cmd/api"
+      }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run ./cmd/migrate"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "mkdir -p bin && go build -buildvcs=false -o bin/cestia-api ./cmd/api"
+      },
+      "outputs": [
+        "{projectRoot}/bin"
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "CGO_ENABLED=1 go test -race ./..."
+      }
+    },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "test -n \"$CESTIA_TEST_DATABASE_URL\" && CGO_ENABLED=1 go test -race -run Integration ./..."
+      },
+      "cache": false
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "test -z \"$(gofmt -l .)\" && sh ../../scripts/check_no_raw_sql.sh"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go vet ./..."
+      }
+    },
+    "sqlc": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 generate"
+      },
+      "outputs": [
+        "{projectRoot}/internal/db/sqlc"
+      ]
+    },
+    "sqlc-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/api",
+        "command": "go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 compile && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 vet && go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.29.0 diff"
+      },
+      "cache": false
+    },
+    "check-no-raw-sql": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "sh scripts/check_no_raw_sql.sh"
+      },
+      "cache": false
+    }
+  },
+  "tags": [
+    "scope:api",
+    "type:app"
+  ]
+}

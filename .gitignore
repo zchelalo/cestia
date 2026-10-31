@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.nx/
+coverage/
+playwright-report/
+test-results/
+apps/api/bin/
+apps/api/.env
+*.log
+*.tsbuildinfo
+.DS_Store

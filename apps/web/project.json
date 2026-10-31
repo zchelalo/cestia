@@ -1,0 +1,30 @@
+{
+  "name": "web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/web/src",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/web", "command": "vite --host 0.0.0.0" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/web", "command": "tsc -b && vite build" },
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/web", "command": "vitest run" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/web", "command": "biome check src vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "apps/web", "command": "tsc -b" }
+    }
+  },
+  "tags": ["scope:web", "type:app"]
+}
