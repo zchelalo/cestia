@@ -11,17 +11,19 @@ import styles from "@/components/Field.module.css";
 
 type Common = {
 	label: string;
+	htmlFor?: string;
 	hint?: string;
 	error?: string;
 	children?: ReactNode;
 };
 
-export function Field({ label, hint, error, children }: Common) {
+export function Field({ label, htmlFor, hint, error, children }: Common) {
 	const generatedId = useId();
 	const childId =
-		isValidElement<{ id?: string }>(children) && children.props.id
+		htmlFor ??
+		(isValidElement<{ id?: string }>(children) && children.props.id
 			? children.props.id
-			: generatedId;
+			: generatedId);
 	const control =
 		isValidElement<{ id?: string }>(children) && !children.props.id
 			? cloneElement(children, { id: generatedId })
