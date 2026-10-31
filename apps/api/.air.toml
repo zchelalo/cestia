@@ -1,0 +1,22 @@
+root = "."
+tmp_dir = "../tmp/air"
+
+[build]
+pre_cmd = ["go run ./cmd/migrate"]
+cmd = "go build -buildvcs=false -o /tmp/cestia-api ./cmd/api"
+bin = "/tmp/cestia-api"
+include_ext = ["go", "sql", "html", "txt"]
+exclude_dir = ["tmp", "bin", "vendor", "testdata", ".docker", ".git"]
+exclude_regex = ["_test\\.go"]
+stop_on_error = true
+send_interrupt = true
+kill_delay = "12s"
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true
+
+[screen]
+clear_on_rebuild = false

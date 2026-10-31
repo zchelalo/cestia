@@ -1,0 +1,93 @@
+{
+  "name": "dev",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "env": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/setup-env.mjs",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "test-env": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --test scripts/setup-env.test.mjs",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "infra": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "env"
+      ],
+      "options": {
+        "command": "docker compose --env-file apps/api/.env -f .docker/compose.yml up -d --wait db mailpit",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "up": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "env"
+      ],
+      "options": {
+        "command": "docker compose --env-file apps/api/.env -f .docker/compose.yml up -d --build --wait api",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "up"
+      ],
+      "options": {
+        "command": "pnpm nx run web:serve",
+        "cwd": "."
+      },
+      "cache": false
+    },
+    "logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose --env-file apps/api/.env -f .docker/compose.yml logs -f --tail=200",
+        "cwd": "."
+      },
+      "cache": false,
+      "dependsOn": [
+        "env"
+      ]
+    },
+    "status": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose --env-file apps/api/.env -f .docker/compose.yml ps",
+        "cwd": "."
+      },
+      "cache": false,
+      "dependsOn": [
+        "env"
+      ]
+    },
+    "down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose --env-file apps/api/.env -f .docker/compose.yml down --remove-orphans",
+        "cwd": "."
+      },
+      "cache": false,
+      "dependsOn": [
+        "env"
+      ]
+    }
+  },
+  "tags": [
+    "scope:dev",
+    "type:tool"
+  ]
+}

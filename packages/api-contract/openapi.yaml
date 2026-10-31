@@ -1,0 +1,1111 @@
+openapi: 3.0.3
+info:
+  title: Cestia API
+  version: 1.0.0
+  license:
+    name: Proprietary
+  description: |
+    API de compras personales y compartidas. Los importes monetarios son strings
+    decimales. Cestia registra pagos reales y nunca calcula deudas, balances,
+    divisiones ni liquidaciones.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+paths:
+  /auth/register:
+    post:
+      security: []
+      summary: Crear una cuenta sin iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12, maxLength: 72 }
+                display_name: { type: string, maxLength: 120 }
+      responses:
+        "201": { $ref: "#/components/responses/UserCreated" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/login:
+    post:
+      security: []
+      summary: Iniciar sesión con cookie HttpOnly y token CSRF
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Sesión creada
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user: { $ref: "#/components/schemas/User" }
+                          csrf_token: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      summary: Revocar la sesión actual
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses:
+        "204": { description: Sesión revocada }
+        "401": { $ref: "#/components/responses/Error" }
+  /auth/verify-email:
+    post:
+      security: []
+      summary: Consumir un enlace de verificación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenBody" }
+      responses:
+        "204": { description: Correo verificado }
+        "410": { $ref: "#/components/responses/Error" }
+  /auth/resend-verification:
+    post:
+      summary: Reenviar verificación al correo de la sesión
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses:
+        "202": { description: Envío encolado si corresponde }
+  /auth/forgot-password:
+    post:
+      security: []
+      summary: Solicitar recuperación sin revelar si la cuenta existe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "202": { description: Solicitud aceptada }
+        "400": { $ref: "#/components/responses/Error" }
+  /auth/reset-password:
+    post:
+      security: []
+      summary: Consumir un enlace de recuperación y revocar sesiones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 12, maxLength: 72 }
+      responses:
+        "204": { description: Contraseña actualizada }
+        "410": { $ref: "#/components/responses/Error" }
+  /auth/change-password:
+    post:
+      summary: Cambiar contraseña y revocar todas las sesiones
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password: { type: string }
+                new_password: { type: string, minLength: 12, maxLength: 72 }
+      responses:
+        "204": { description: Contraseña actualizada }
+        "422": { $ref: "#/components/responses/Error" }
+  /me:
+    get:
+      summary: Perfil de la sesión actual
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Actualizar nombre, idioma y zona horaria
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [display_name, locale, timezone]
+              properties:
+                display_name: { type: string, maxLength: 120 }
+                locale: { type: string, enum: [es] }
+                timezone: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/User" }
+  /me/sessions:
+    get:
+      summary: Listar sesiones activas
+      responses:
+        "200":
+          description: Sesiones
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Session" }
+  /me/sessions/{sessionId}:
+    delete:
+      summary: Revocar una sesión propia
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Sesión revocada }
+        "404": { $ref: "#/components/responses/Error" }
+  /me/deactivate:
+    post:
+      summary: Desactivar la cuenta si no posee grupos
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "204": { description: Cuenta desactivada }
+        "409": { $ref: "#/components/responses/Error" }
+  /dashboard:
+    get:
+      summary: Datos autorizados para el resumen inicial
+      responses:
+        "200": { description: Dashboard }
+  /groups/options:
+    get:
+      summary: Opciones paginadas de grupos accesibles para selectores
+      parameters:
+        - { $ref: "#/components/parameters/OptionSearch" }
+        - { $ref: "#/components/parameters/OptionCursor" }
+        - { $ref: "#/components/parameters/OptionLimit" }
+      responses:
+        "200": { $ref: "#/components/responses/SelectOptions" }
+        "400": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/members/options:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    get:
+      summary: Opciones paginadas de integrantes activos para selectores
+      parameters:
+        - { $ref: "#/components/parameters/OptionSearch" }
+        - { $ref: "#/components/parameters/OptionCursor" }
+        - { $ref: "#/components/parameters/OptionLimit" }
+      responses:
+        "200": { $ref: "#/components/responses/SelectOptions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /groups:
+    get:
+      summary: Listar grupos donde el usuario es integrante activo
+      responses:
+        "200": { $ref: "#/components/responses/Groups" }
+    post:
+      summary: Crear un grupo y su membresía de propietario
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Group" }
+        "422": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    get:
+      summary: Detalle de un grupo accesible
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Editar grupo (solo propietario)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionedGroupInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/archive:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    post:
+      summary: Archivar grupo (solo propietario)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+  /groups/{groupId}/restore:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    post:
+      summary: Restaurar grupo (solo propietario)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+  /groups/{groupId}/transfer-ownership:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    post:
+      summary: Transferir propiedad a otro integrante activo
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id: { type: string, format: uuid }
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+        "403": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/leave:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    post:
+      summary: Abandonar un grupo (el propietario debe transferir primero)
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses:
+        "204": { description: Membresía retirada }
+        "409": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/members:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    get:
+      summary: Listar integrantes activos
+      responses:
+        "200":
+          description: Integrantes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: "#/components/schemas/Member" }
+  /groups/{groupId}/members/{userId}:
+    parameters:
+      - { $ref: "#/components/parameters/GroupId" }
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      summary: Cambiar rol base (solo propietario; owner no se asigna aquí)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, member] }
+      responses:
+        "204": { description: Rol actualizado }
+        "403": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Retirar integrante según la matriz de permisos
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses:
+        "204": { description: Integrante retirado }
+        "403": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/invitations:
+    parameters: [{ $ref: "#/components/parameters/GroupId" }]
+    get:
+      summary: Listar invitaciones (owner/admin)
+      responses:
+        "200": { $ref: "#/components/responses/Invitations" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Invitar un correo como member
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "201": { $ref: "#/components/responses/Invitation" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/invitations/{invitationId}/resend:
+    parameters:
+      - { $ref: "#/components/parameters/GroupId" }
+      - { $ref: "#/components/parameters/InvitationId" }
+    post:
+      summary: Reenviar invitación e invalidar el enlace anterior
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Invitation" }
+        "409": { $ref: "#/components/responses/Error" }
+  /groups/{groupId}/invitations/{invitationId}:
+    parameters:
+      - { $ref: "#/components/parameters/GroupId" }
+      - { $ref: "#/components/parameters/InvitationId" }
+    delete:
+      summary: Cancelar invitación pendiente
+      security: [{ sessionCookie: [], csrf: [] }]
+      responses:
+        "204": { description: Invitación cancelada }
+  /invitations/preview:
+    post:
+      summary: Ver una invitación dirigida al correo de la sesión
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Invitation" }
+        "403": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /invitations/accept:
+    post:
+      summary: Aceptar invitación y crear membresía
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Invitation" }
+        "409": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+  /invitations/reject:
+    post:
+      summary: Rechazar invitación
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TokenBody" }
+      responses:
+        "200": { $ref: "#/components/responses/Invitation" }
+  /shopping-lists:
+    get:
+      summary: Listar listas personales o de un grupo
+      parameters:
+        - name: group_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: include_archived
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { $ref: "#/components/responses/Lists" }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      summary: Crear lista personal o de grupo
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ListInput" }
+      responses:
+        "201": { $ref: "#/components/responses/List" }
+        "403": { $ref: "#/components/responses/Error" }
+  /shopping-lists/{listId}:
+    parameters: [{ $ref: "#/components/parameters/ListId" }]
+    get:
+      summary: Detalle de lista accesible
+      responses:
+        "200": { $ref: "#/components/responses/List" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Editar lista (owner/admin)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionedListInput" }
+      responses:
+        "200": { $ref: "#/components/responses/List" }
+        "409": { $ref: "#/components/responses/Error" }
+  /shopping-lists/{listId}/archive:
+    parameters: [{ $ref: "#/components/parameters/ListId" }]
+    post:
+      summary: Archivar lista (owner/admin)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionBody" }
+      responses:
+        "200": { $ref: "#/components/responses/List" }
+  /shopping-lists/{listId}/restore:
+    parameters: [{ $ref: "#/components/parameters/ListId" }]
+    post:
+      summary: Restaurar lista (owner/admin)
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionBody" }
+      responses:
+        "200": { $ref: "#/components/responses/List" }
+  /shopping-lists/{listId}/items:
+    parameters: [{ $ref: "#/components/parameters/ListId" }]
+    get:
+      summary: Listar artículos activos de una lista accesible
+      responses:
+        "200": { $ref: "#/components/responses/Items" }
+    post:
+      summary: Agregar artículo pendiente
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ItemInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Item" }
+        "409": { $ref: "#/components/responses/Error" }
+  /items/{itemId}:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    patch:
+      summary: Editar artículo; si está comprado, solo notas
+      security: [{ sessionCookie: [], csrf: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VersionedItemInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Item" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      summary: Eliminar lógicamente artículo (owner/admin)
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters:
+        - name: expected_version
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "204": { description: Artículo eliminado lógicamente }
+        "403": { $ref: "#/components/responses/Error" }
+  /items/{itemId}/purchases:
+    parameters: [{ $ref: "#/components/parameters/ItemId" }]
+    post:
+      summary: Registrar la compra completa de un artículo
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PurchaseInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Purchase" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /purchases/{purchaseId}:
+    parameters: [{ $ref: "#/components/parameters/PurchaseId" }]
+    get:
+      summary: Consultar compra accesible
+      responses:
+        "200": { $ref: "#/components/responses/Purchase" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Corregir precio, comprador, pagador, fecha o notas
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CorrectionInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Purchase" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /purchases/{purchaseId}/reverse:
+    parameters: [{ $ref: "#/components/parameters/PurchaseId" }]
+    post:
+      summary: Revertir compra conservando historial
+      security: [{ sessionCookie: [], csrf: [] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReverseInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Purchase" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /expenses/summary:
+    get:
+      summary: Resumen de importes planificados, pendientes y realmente gastados
+      parameters: [{ $ref: "#/components/parameters/ExpenseQuery" }]
+      responses:
+        "200": { $ref: "#/components/responses/Summary" }
+  /expenses/by-list:
+    get:
+      summary: Gasto real y pendiente por lista
+      parameters: [{ $ref: "#/components/parameters/ExpenseQuery" }]
+      responses:
+        "200": { description: Totales por lista }
+  /purchases:
+    get:
+      summary: Historial paginado de compras
+      parameters:
+        - { $ref: "#/components/parameters/ExpenseScope" }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: list_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: paid_by
+          in: query
+          schema: { type: string, format: uuid }
+        - name: purchased_by
+          in: query
+          schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        "200": { $ref: "#/components/responses/Purchases" }
+  /activity:
+    get:
+      summary: Historial de actividad por alcance
+      parameters:
+        - { $ref: "#/components/parameters/ExpenseScope" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        "200": { description: Eventos de actividad }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: cestia_session
+    csrf:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ListId:
+      name: listId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PurchaseId:
+      name: purchaseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 200 }
+    ExpenseScope:
+      name: group_id
+      in: query
+      schema: { type: string, format: uuid }
+      description: Ausente significa espacio personal.
+    ExpenseQuery:
+      name: filters
+      in: query
+      schema:
+        type: object
+        properties:
+          group_id: { type: string, format: uuid }
+          from: { type: string, format: date-time }
+          to: { type: string, format: date-time }
+          include_archived: { type: boolean, default: true }
+    OptionSearch:
+      name: search
+      in: query
+      schema: { type: string }
+    OptionCursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    OptionLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  schemas:
+    SelectOption:
+      type: object
+      required: [value, label]
+      properties:
+        value: { type: string }
+        label: { type: string }
+        description: { type: string }
+    Envelope:
+      type: object
+      properties:
+        data: {}
+        meta:
+          type: object
+          properties:
+            next_cursor: { type: string }
+            limit: { type: integer }
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        request_id: { type: string }
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: {}
+    User:
+      type: object
+      required: [id, email, display_name, email_verified, locale, timezone, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        email_verified: { type: boolean }
+        locale: { type: string }
+        timezone: { type: string }
+        created_at: { type: string, format: date-time }
+    Session:
+      type: object
+      required: [id, created_at, expires_at, current]
+      properties:
+        id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        current: { type: boolean }
+    Group:
+      type: object
+      required: [id, name, owner_user_id, version, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        owner_user_id: { type: string, format: uuid }
+        archived_at: { type: string, format: date-time, nullable: true }
+        version: { type: integer, format: int64 }
+        role: { type: string, enum: [owner, admin, member] }
+        member_count: { type: integer }
+        list_count: { type: integer }
+    Member:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [owner, admin, member] }
+        joined_at: { type: string, format: date-time }
+    Invitation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        email: { type: string }
+        status: { type: string, enum: [pending, accepted, rejected, canceled, expired] }
+        expires_at: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+    List:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        personal_owner_id: { type: string, format: uuid, nullable: true }
+        group_id: { type: string, format: uuid, nullable: true }
+        archived_at: { type: string, format: date-time, nullable: true }
+        version: { type: integer, format: int64 }
+        role: { type: string, enum: [owner, admin, member] }
+        pending_count: { type: integer }
+        purchased_count: { type: integer }
+    Item:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        list_id: { type: string, format: uuid }
+        name: { type: string }
+        quantity: { type: string, example: "3.000" }
+        unit: { type: string, enum: [unit, kg, g, l, ml, package] }
+        estimated_unit_price: { type: string, nullable: true, example: "19.9900" }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        assigned_to_name: { type: string, nullable: true }
+        notes: { type: string }
+        version: { type: integer, format: int64 }
+        purchase: { $ref: "#/components/schemas/Purchase" }
+    Purchase:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        item_name: { type: string }
+        quantity: { type: string }
+        unit: { type: string }
+        actual_unit_price: { type: string, nullable: true }
+        total_amount: { type: string, nullable: true, description: "quantity × unit price rounded half-up to 2 decimals" }
+        currency: { type: string, enum: [MXN] }
+        recorded_by: { type: string, format: uuid }
+        purchased_by: { type: string, format: uuid }
+        paid_by: { type: string, format: uuid, nullable: true }
+        purchased_at: { type: string, format: date-time }
+        reversed_at: { type: string, format: date-time, nullable: true }
+        reversal_reason: { type: string, nullable: true }
+        version: { type: integer, format: int64 }
+    GroupInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+    VersionedGroupInput:
+      allOf:
+        - $ref: "#/components/schemas/GroupInput"
+        - type: object
+          required: [expected_version]
+          properties:
+            expected_version: { type: integer, format: int64 }
+    VersionBody:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version: { type: integer, format: int64 }
+    ListInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        group_id: { type: string, format: uuid, nullable: true }
+    VersionedListInput:
+      allOf:
+        - $ref: "#/components/schemas/ListInput"
+        - type: object
+          required: [expected_version]
+          properties:
+            expected_version: { type: integer, format: int64 }
+    ItemInput:
+      type: object
+      required: [name, quantity, unit]
+      properties:
+        name: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        quantity: { type: string, example: "1.500" }
+        unit: { type: string, enum: [unit, kg, g, l, ml, package] }
+        estimated_unit_price: { type: string, example: "25.50" }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        notes: { type: string, maxLength: 4000 }
+        expected_version: { type: integer, format: int64 }
+    VersionedItemInput:
+      allOf:
+        - $ref: "#/components/schemas/ItemInput"
+    PurchaseInput:
+      type: object
+      required: [expected_version, purchased_by, purchased_at]
+      properties:
+        expected_version: { type: integer, format: int64 }
+        actual_unit_price: { type: string, description: "Empty or null means unknown" }
+        purchased_by: { type: string, format: uuid }
+        paid_by: { type: string, format: uuid, nullable: true }
+        purchased_at: { type: string, format: date-time }
+        notes: { type: string, maxLength: 4000 }
+    CorrectionInput:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseInput"
+        - type: object
+          required: [reason]
+          properties:
+            reason: { type: string, maxLength: 500 }
+    ReverseInput:
+      type: object
+      required: [expected_version, reason]
+      properties:
+        expected_version: { type: integer, format: int64 }
+        reason: { type: string, maxLength: 500 }
+    TokenBody:
+      type: object
+      required: [token]
+      properties:
+        token: { type: string }
+    Summary:
+      type: object
+      properties:
+        scope: { type: string }
+        estimated_known: { type: string }
+        estimated_unknown_items: { type: integer }
+        pending_estimated: { type: string }
+        actual_known: { type: string }
+        purchases_without_price: { type: integer }
+        purchase_count: { type: integer }
+        pending_count: { type: integer }
+        purchased_count: { type: integer }
+        unidentified_paid: { type: string }
+        by_payer:
+          type: array
+          items:
+            type: object
+            properties:
+              paid_by: { type: string, format: uuid, nullable: true }
+              display_name: { type: string }
+              amount: { type: string }
+              purchase_count: { type: integer }
+  responses:
+    Error:
+      description: Error de aplicación
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Envelope" }
+    User:
+      description: Usuario
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/User" }
+    UserCreated:
+      description: Cuenta creada sin sesión
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/User" }
+    Group:
+      description: Grupo
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Group" }
+    Groups:
+      description: Grupos
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+    List:
+      description: Lista
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/List" }
+    Lists:
+      description: Listas
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/List" }
+    Item:
+      description: Artículo
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Item" }
+    Items:
+      description: Artículos
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Item" }
+    Purchase:
+      description: Compra
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Purchase" }
+    Purchases:
+      description: Compras paginadas
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Purchase" }
+    SelectOptions:
+      description: Opciones paginadas para selectores
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SelectOption" }
+    Invitation:
+      description: Invitación
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Invitation" }
+    Invitations:
+      description: Invitaciones
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Invitation" }
+    Summary:
+      description: Resumen de gastos
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Envelope"
+              - type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Summary" }

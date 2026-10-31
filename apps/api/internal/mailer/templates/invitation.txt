@@ -1,0 +1,6 @@
+Te invitaron a {{.GroupName}}
+
+{{.InviterName}} quiere compartir listas de compras contigo en Cestia:
+{{.URL}}
+
+La invitación caduca el {{.ExpiresAt}}. Si no esperabas este correo, ignóralo.

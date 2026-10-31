@@ -1,0 +1,18 @@
+FROM golang:1.27.1
+
+WORKDIR /workspace
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN go install github.com/air-verse/air@v1.62.0
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["sh", ".docker/entrypoint.sh"]

@@ -1,0 +1,6 @@
+Hola {{.Name}},
+
+Recibimos una solicitud para cambiar tu contraseña de Cestia:
+{{.URL}}
+
+El enlace caduca en una hora y solo puede usarse una vez.
