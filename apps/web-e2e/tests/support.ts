@@ -89,7 +89,8 @@ export async function purchaseItem(
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Precio unitario real').fill(input.price)
   if (input.payer) {
-    await dialog.getByLabel('Pagador').selectOption({ label: input.payer })
+    await dialog.getByRole('button', { name: 'Pagador' }).click()
+    await page.getByRole('option', { name: input.payer }).click()
   }
   await dialog.getByRole('button', { name: 'Registrar compra' }).click()
   await expect(dialog).toBeHidden()

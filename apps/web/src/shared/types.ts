@@ -96,6 +96,7 @@ export type ShoppingItem = {
 	estimated_unit_price: string | null;
 	created_by: string;
 	assigned_to: string | null;
+	assigned_to_name?: string | null;
 	notes: string;
 	version: number;
 	created_at: string;

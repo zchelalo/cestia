@@ -2,12 +2,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { LogOut, Shield, Trash2, UserRound } from "lucide-react";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useMemo, useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
-import { Field, Input, Select } from "@/components/Field";
+import { Field, Input } from "@/components/Field";
+import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
@@ -15,6 +16,7 @@ import { apiData } from "@/shared/http";
 import { formatDate } from "@/shared/money";
 import { useSession } from "@/shared/session";
 import type { Session, User } from "@/shared/types";
+import { useLocalSelectOptions } from "@/shared/use-local-select-options";
 
 const profileSchema = z.object({
 	display_name: z.string().trim().min(1, "Escribe tu nombre.").max(120),
@@ -100,6 +102,21 @@ export function SettingsPage() {
 			setError(cause instanceof Error ? cause.message : t("common.error")),
 	});
 
+	const localeCatalog = useLocalSelectOptions([
+		{ value: "es", label: "Español" },
+	]);
+
+	const timezoneOptions = useMemo(
+		() => [
+			{ value: "America/Mexico_City", label: "Ciudad de México" },
+			{ value: "America/Tijuana", label: "Tijuana" },
+			{ value: "America/Cancun", label: "Cancún" },
+			{ value: "America/Monterrey", label: "Monterrey" },
+		],
+		[],
+	);
+	const timezoneCatalog = useLocalSelectOptions(timezoneOptions);
+
 	if (sessions.isLoading) return <LoadingState />;
 	if (sessions.isError)
 		return (
@@ -159,18 +176,41 @@ export function SettingsPage() {
 						<Field label="Correo">
 							<Input value={me?.email ?? ""} disabled readOnly />
 						</Field>
-						<Field label="Idioma">
-							<Select {...profileForm.register("locale")}>
-								<option value="es">Español</option>
-							</Select>
+						<Field label="Idioma" htmlFor="profile-locale">
+							<Controller
+								name="locale"
+								control={profileForm.control}
+								render={({ field }) => (
+									<Select
+										id="profile-locale"
+										aria-label="Idioma"
+										options={localeCatalog.options}
+										value={field.value}
+										onChange={field.onChange}
+										onBlur={field.onBlur}
+										searchValue={localeCatalog.searchValue}
+										onSearchChange={localeCatalog.onSearchChange}
+									/>
+								)}
+							/>
 						</Field>
-						<Field label="Zona horaria">
-							<Select {...profileForm.register("timezone")}>
-								<option value="America/Mexico_City">Ciudad de México</option>
-								<option value="America/Tijuana">Tijuana</option>
-								<option value="America/Cancun">Cancún</option>
-								<option value="America/Monterrey">Monterrey</option>
-							</Select>
+						<Field label="Zona horaria" htmlFor="profile-timezone">
+							<Controller
+								name="timezone"
+								control={profileForm.control}
+								render={({ field }) => (
+									<Select
+										id="profile-timezone"
+										aria-label="Zona horaria"
+										options={timezoneCatalog.options}
+										value={field.value}
+										onChange={field.onChange}
+										onBlur={field.onBlur}
+										searchValue={timezoneCatalog.searchValue}
+										onSearchChange={timezoneCatalog.onSearchChange}
+									/>
+								)}
+							/>
 						</Field>
 						<div className={styles.formActions}>
 							<Button type="submit" disabled={updateProfile.isPending}>

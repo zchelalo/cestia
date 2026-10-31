@@ -52,12 +52,14 @@ test('group invitation attributes purchase to buyer and payer', async ({ browser
   await expect(memberPage.getByText('$60.00').first()).toBeVisible()
 
   await memberPage.goto('/expenses')
-  await memberPage.getByLabel('Espacio').selectOption({ label: groupName })
+  await memberPage.getByRole('button', { name: 'Espacio' }).click()
+  await memberPage.getByRole('option', { name: groupName }).click()
   await expect(memberPage.getByText('$60.00').first()).toBeVisible()
   await expect(memberPage.getByText(owner.name)).toBeVisible()
 
   await memberPage.goto('/history')
-  await memberPage.getByLabel('Espacio').selectOption({ label: groupName })
+  await memberPage.getByRole('button', { name: 'Espacio' }).click()
+  await memberPage.getByRole('option', { name: groupName }).click()
   await expect(memberPage.getByText(new RegExp(`Compró ${member.name}.*pagó ${owner.name}`))).toBeVisible()
 
   await ownerContext.close()

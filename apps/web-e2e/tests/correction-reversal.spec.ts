@@ -33,7 +33,8 @@ test('correction, unknown payer and reversal preserve history', async ({ page, r
 
   await page.getByRole('button', { name: 'Corregir compra' }).click()
   dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Pagador').selectOption({ label: 'No identificado' })
+  await dialog.getByRole('button', { name: 'Pagador' }).click()
+  await page.getByRole('option', { name: 'No identificado' }).click()
   await dialog.getByLabel('Motivo de la corrección').fill('Pagador no identificado E2E')
   await dialog.getByRole('button', { name: 'Guardar' }).click()
   await expect(dialog).toBeHidden()

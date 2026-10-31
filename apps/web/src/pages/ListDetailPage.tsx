@@ -12,16 +12,18 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
-import { Field, Input, Select, Textarea } from "@/components/Field";
+import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
+import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
 import { SummaryCard } from "@/components/SummaryCard";
 import styles from "@/pages/Page.module.css";
+import { useGroupMemberSelectOptions } from "@/shared/catalogs";
 import { apiData } from "@/shared/http";
 import {
 	formatDate,
@@ -32,12 +34,12 @@ import {
 } from "@/shared/money";
 import { useSession } from "@/shared/session";
 import type {
-	Member,
 	Purchase,
 	ShoppingItem,
 	ShoppingList,
 	Summary,
 } from "@/shared/types";
+import { useLocalSelectOptions } from "@/shared/use-local-select-options";
 
 const itemSchema = z.object({
 	name: z.string().trim().min(1, "Escribe un nombre.").max(120),
@@ -118,12 +120,6 @@ export function ListDetailPage() {
 			);
 		},
 		enabled: !!list.data,
-	});
-	const members = useQuery({
-		queryKey: ["members", list.data?.group_id],
-		queryFn: () =>
-			apiData<Member[]>(`/api/v1/groups/${list.data?.group_id}/members`),
-		enabled: !!list.data?.group_id,
 	});
 
 	const itemForm = useForm<ItemForm>({ resolver: zodResolver(itemSchema) });
@@ -299,19 +295,37 @@ export function ListDetailPage() {
 			setMessage(cause instanceof Error ? cause.message : t("common.error")),
 	});
 
-	const people = useMemo<Member[]>(() => {
-		if (list.data?.group_id) return members.data ?? [];
+	const isGroup = Boolean(list.data?.group_id);
+	const staticMembers = useMemo(() => {
+		if (isGroup) return [];
 		if (!me) return [];
 		return [
 			{
-				user_id: me.id,
-				display_name: me.display_name,
-				email: me.email,
-				role: "owner",
-				joined_at: me.created_at,
+				value: me.id,
+				label: me.display_name,
+				description: me.email,
 			},
 		];
-	}, [list.data?.group_id, members.data, me]);
+	}, [isGroup, me]);
+
+	const memberCatalog = useGroupMemberSelectOptions(
+		list.data?.group_id,
+		staticMembers,
+	);
+	const memberLabel = (value: string, fallback?: string | null) =>
+		memberCatalog.labelFor(value) ??
+		fallback ??
+		(value === me?.id ? me.display_name : undefined);
+
+	const unitOptions = useMemo(
+		() =>
+			Object.entries(unitLabels).map(([value, label]) => ({
+				value,
+				label,
+			})),
+		[],
+	);
+	const unitCatalog = useLocalSelectOptions(unitOptions);
 
 	if (list.isLoading || items.isLoading) return <LoadingState />;
 	if (list.isError)
@@ -522,9 +536,11 @@ export function ListDetailPage() {
 										{item.estimated_unit_price
 											? ` · ${formatMoney(item.estimated_unit_price)} estimado`
 											: ""}
-										{item.assigned_to
-											? ` · ${people.find((person) => person.user_id === item.assigned_to)?.display_name ?? "Asignado"}`
-											: ""}
+										{item.assigned_to_name
+											? ` · ${item.assigned_to_name}`
+											: item.assigned_to
+												? ` · ${memberCatalog.labelFor(item.assigned_to) ?? "Asignado"}`
+												: ""}
 									</span>
 									{purchase ? (
 										<span className={styles.rowMeta}>
@@ -656,14 +672,24 @@ export function ListDetailPage() {
 											{...itemForm.register("quantity")}
 										/>
 									</Field>
-									<Field label={t("lists.unit")}>
-										<Select {...itemForm.register("unit")}>
-											{Object.entries(unitLabels).map(([value, label]) => (
-												<option key={value} value={value}>
-													{label}
-												</option>
-											))}
-										</Select>
+									<Field label={t("lists.unit")} htmlFor="item-unit">
+										<Controller
+											name="unit"
+											control={itemForm.control}
+											render={({ field }) => (
+												<Select
+													id="item-unit"
+													aria-label={t("lists.unit")}
+													options={unitCatalog.options}
+													value={field.value}
+													onChange={field.onChange}
+													onBlur={field.onBlur}
+													searchValue={unitCatalog.searchValue}
+													onSearchChange={unitCatalog.onSearchChange}
+													placeholder={t("lists.unit")}
+												/>
+											)}
+										/>
 									</Field>
 									<Field
 										label={t("lists.estimatedUnitPrice")}
@@ -674,15 +700,43 @@ export function ListDetailPage() {
 											{...itemForm.register("estimated_unit_price")}
 										/>
 									</Field>
-									<Field label={t("lists.assignedTo")}>
-										<Select {...itemForm.register("assigned_to")}>
-											<option value="">{t("lists.unassigned")}</option>
-											{people.map((person) => (
-												<option key={person.user_id} value={person.user_id}>
-													{person.display_name}
-												</option>
-											))}
-										</Select>
+									<Field
+										label={t("lists.assignedTo")}
+										htmlFor="item-assigned-to"
+									>
+										<Controller
+											name="assigned_to"
+											control={itemForm.control}
+											render={({ field }) => (
+												<Select
+													id="item-assigned-to"
+													aria-label={t("lists.assignedTo")}
+													remote
+													selectedLabel={memberLabel(
+														field.value,
+														dialog?.item?.assigned_to_name,
+													)}
+													options={[
+														{
+															value: "",
+															label: t("lists.unassigned"),
+															local: true,
+														},
+														...memberCatalog.options,
+													]}
+													value={field.value}
+													onChange={field.onChange}
+													onBlur={field.onBlur}
+													searchValue={memberCatalog.searchInput}
+													onSearchChange={memberCatalog.setSearchInput}
+													isLoading={memberCatalog.isLoading}
+													isLoadingMore={memberCatalog.isFetchingNextPage}
+													hasMore={memberCatalog.hasMore}
+													onLoadMore={memberCatalog.loadMore}
+													placeholder={t("lists.unassigned")}
+												/>
+											)}
+										/>
 									</Field>
 								</div>
 								<Field
@@ -740,25 +794,64 @@ export function ListDetailPage() {
 							</Field>
 							<Field
 								label={t("lists.purchasedBy")}
+								htmlFor="purchase-purchased-by"
 								error={purchaseForm.formState.errors.purchased_by?.message}
 							>
-								<Select {...purchaseForm.register("purchased_by")}>
-									{people.map((person) => (
-										<option key={person.user_id} value={person.user_id}>
-											{person.display_name}
-										</option>
-									))}
-								</Select>
+								<Controller
+									name="purchased_by"
+									control={purchaseForm.control}
+									render={({ field }) => (
+										<Select
+											id="purchase-purchased-by"
+											aria-label={t("lists.purchasedBy")}
+											remote
+											selectedLabel={memberLabel(field.value)}
+											options={memberCatalog.options}
+											value={field.value}
+											onChange={field.onChange}
+											onBlur={field.onBlur}
+											searchValue={memberCatalog.searchInput}
+											onSearchChange={memberCatalog.setSearchInput}
+											isLoading={memberCatalog.isLoading}
+											isLoadingMore={memberCatalog.isFetchingNextPage}
+											hasMore={memberCatalog.hasMore}
+											onLoadMore={memberCatalog.loadMore}
+											placeholder={t("lists.purchasedBy")}
+										/>
+									)}
+								/>
 							</Field>
-							<Field label={t("lists.paidBy")}>
-								<Select {...purchaseForm.register("paid_by")}>
-									<option value="">{t("lists.unidentified")}</option>
-									{people.map((person) => (
-										<option key={person.user_id} value={person.user_id}>
-											{person.display_name}
-										</option>
-									))}
-								</Select>
+							<Field label={t("lists.paidBy")} htmlFor="purchase-paid-by">
+								<Controller
+									name="paid_by"
+									control={purchaseForm.control}
+									render={({ field }) => (
+										<Select
+											id="purchase-paid-by"
+											aria-label={t("lists.paidBy")}
+											remote
+											selectedLabel={memberLabel(field.value)}
+											options={[
+												{
+													value: "",
+													label: t("lists.unidentified"),
+													local: true,
+												},
+												...memberCatalog.options,
+											]}
+											value={field.value}
+											onChange={field.onChange}
+											onBlur={field.onBlur}
+											searchValue={memberCatalog.searchInput}
+											onSearchChange={memberCatalog.setSearchInput}
+											isLoading={memberCatalog.isLoading}
+											isLoadingMore={memberCatalog.isFetchingNextPage}
+											hasMore={memberCatalog.hasMore}
+											onLoadMore={memberCatalog.loadMore}
+											placeholder={t("lists.unidentified")}
+										/>
+									)}
+								/>
 							</Field>
 						</div>
 						<TotalPreview
@@ -804,39 +897,109 @@ export function ListDetailPage() {
 									{...correctionForm.register("purchased_at")}
 								/>
 							</Field>
-							<Field label={t("lists.purchasedBy")}>
-								<Select {...correctionForm.register("purchased_by")}>
-									{people.map((person) => (
-										<option key={person.user_id} value={person.user_id}>
-											{person.display_name}
-										</option>
-									))}
-									{!people.some(
-										(person) => person.user_id === dialog.purchase.purchased_by,
-									) ? (
-										<option value={dialog.purchase.purchased_by}>
-											{dialog.purchase.purchased_by_name} (histórico)
-										</option>
-									) : null}
-								</Select>
+							<Field
+								label={t("lists.purchasedBy")}
+								htmlFor="correction-purchased-by"
+							>
+								<Controller
+									name="purchased_by"
+									control={correctionForm.control}
+									render={({ field }) => {
+										const hasSelected = memberCatalog.options.some(
+											(o) => o.value === field.value,
+										);
+										const options =
+											hasSelected || !dialog?.purchase
+												? memberCatalog.options
+												: [
+														{
+															value: dialog.purchase.purchased_by,
+															label: `${dialog.purchase.purchased_by_name ?? "Usuario"} (histórico)`,
+															local: true,
+														},
+														...memberCatalog.options,
+													];
+										return (
+											<Select
+												id="correction-purchased-by"
+												aria-label={t("lists.purchasedBy")}
+												remote
+												selectedLabel={memberLabel(
+													field.value,
+													field.value === dialog?.purchase?.purchased_by
+														? dialog.purchase.purchased_by_name
+														: undefined,
+												)}
+												options={options}
+												value={field.value}
+												onChange={field.onChange}
+												onBlur={field.onBlur}
+												searchValue={memberCatalog.searchInput}
+												onSearchChange={memberCatalog.setSearchInput}
+												isLoading={memberCatalog.isLoading}
+												isLoadingMore={memberCatalog.isFetchingNextPage}
+												hasMore={memberCatalog.hasMore}
+												onLoadMore={memberCatalog.loadMore}
+												placeholder={t("lists.purchasedBy")}
+											/>
+										);
+									}}
+								/>
 							</Field>
-							<Field label={t("lists.paidBy")}>
-								<Select {...correctionForm.register("paid_by")}>
-									<option value="">{t("lists.unidentified")}</option>
-									{people.map((person) => (
-										<option key={person.user_id} value={person.user_id}>
-											{person.display_name}
-										</option>
-									))}
-									{dialog.purchase.paid_by &&
-									!people.some(
-										(person) => person.user_id === dialog.purchase.paid_by,
-									) ? (
-										<option value={dialog.purchase.paid_by}>
-											{dialog.purchase.paid_by_name} (histórico)
-										</option>
-									) : null}
-								</Select>
+							<Field label={t("lists.paidBy")} htmlFor="correction-paid-by">
+								<Controller
+									name="paid_by"
+									control={correctionForm.control}
+									render={({ field }) => {
+										const hasSelected =
+											!field.value ||
+											memberCatalog.options.some(
+												(o) => o.value === field.value,
+											);
+										const extraHistorical =
+											!hasSelected && dialog?.purchase?.paid_by
+												? [
+														{
+															value: dialog.purchase.paid_by,
+															label: `${dialog.purchase.paid_by_name ?? "Usuario"} (histórico)`,
+															local: true,
+														},
+													]
+												: [];
+										return (
+											<Select
+												id="correction-paid-by"
+												aria-label={t("lists.paidBy")}
+												remote
+												selectedLabel={memberLabel(
+													field.value,
+													field.value === dialog?.purchase?.paid_by
+														? dialog.purchase.paid_by_name
+														: undefined,
+												)}
+												options={[
+													{
+														value: "",
+														label: t("lists.unidentified"),
+														local: true,
+													},
+													...extraHistorical,
+													...memberCatalog.options,
+												]}
+												value={field.value}
+												onChange={field.onChange}
+												onBlur={field.onBlur}
+												searchValue={memberCatalog.searchInput}
+												onSearchChange={memberCatalog.setSearchInput}
+												isLoading={memberCatalog.isLoading}
+												isLoadingMore={memberCatalog.isFetchingNextPage}
+												hasMore={memberCatalog.hasMore}
+												onLoadMore={memberCatalog.loadMore}
+												placeholder={t("lists.unidentified")}
+											/>
+										);
+									}}
+								/>
 							</Field>
 						</div>
 						<Field label={t("common.notes")}>

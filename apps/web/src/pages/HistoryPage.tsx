@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Button } from "@/components/Button";
+import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
+import { useGroupSelectOptions } from "@/shared/catalogs";
 import { apiData, apiPage } from "@/shared/http";
 import { formatDate, formatMoney, unitLabels } from "@/shared/money";
 import type { Activity, Group, Purchase } from "@/shared/types";
@@ -18,10 +20,16 @@ export function HistoryPage() {
 	const [scope, setScope] = useState(search.group_id ?? "");
 	const [from, setFrom] = useState("");
 	const [to, setTo] = useState("");
-	const groups = useQuery({
-		queryKey: ["groups"],
-		queryFn: () => apiData<Group[]>("/api/v1/groups"),
+
+	const groupCatalog = useGroupSelectOptions([
+		{ value: "", label: t("expenses.personal"), local: true },
+	]);
+	const selectedGroup = useQuery({
+		queryKey: ["group", scope],
+		queryFn: () => apiData<Group>(`/api/v1/groups/${scope}`),
+		enabled: !!scope && !groupCatalog.labelFor(scope),
 	});
+	const scopeLabel = groupCatalog.labelFor(scope) ?? selectedGroup.data?.name;
 
 	const purchases = useInfiniteQuery({
 		queryKey: ["history", "purchases", scope, from, to],
@@ -57,21 +65,24 @@ export function HistoryPage() {
 
 			<div className={styles.card}>
 				<div className={styles.filters}>
-					<label className={styles.filterItem}>
-						{t("expenses.scope")}
-						<select
-							className={styles.select}
+					<div className={styles.filterItem}>
+						<span>{t("expenses.scope")}</span>
+						<Select
+							aria-label={t("expenses.scope")}
+							remote
+							options={groupCatalog.options}
 							value={scope}
-							onChange={(event) => setScope(event.target.value)}
-						>
-							<option value="">{t("expenses.personal")}</option>
-							{groups.data?.map((group) => (
-								<option key={group.id} value={group.id}>
-									{group.name}
-								</option>
-							))}
-						</select>
-					</label>
+							selectedLabel={scopeLabel}
+							onChange={setScope}
+							searchValue={groupCatalog.searchInput}
+							onSearchChange={groupCatalog.setSearchInput}
+							isLoading={groupCatalog.isLoading}
+							isLoadingMore={groupCatalog.isFetchingNextPage}
+							hasMore={groupCatalog.hasMore}
+							onLoadMore={groupCatalog.loadMore}
+							placeholder={t("expenses.personal")}
+						/>
+					</div>
 					<label className={styles.filterItem}>
 						{t("expenses.from")}
 						<input
