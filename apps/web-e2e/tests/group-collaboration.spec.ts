@@ -32,6 +32,12 @@ test('group invitation attributes purchase to buyer and payer', async ({ browser
 
   await ownerPage.goto(groupUrl)
   await ownerPage.getByRole('link', { name: 'Integrantes' }).click()
+  const inviteInput = await ownerPage.locator('#invite-email').boundingBox()
+  const inviteButton = await ownerPage
+    .getByRole('button', { name: 'Invitar por correo' })
+    .boundingBox()
+  expect(Math.round(inviteButton!.bottom)).toBe(Math.round(inviteInput!.bottom))
+  expect(Math.round(inviteButton!.height)).toBe(Math.round(inviteInput!.height))
   await ownerPage.getByLabel('Correo de la persona').fill(member.email)
   await ownerPage.getByRole('button', { name: 'Invitar por correo' }).click()
   await expect(ownerPage.getByText('Invitación encolada. Se enviará por correo.')).toBeVisible()
@@ -60,7 +66,8 @@ test('group invitation attributes purchase to buyer and payer', async ({ browser
   await memberPage.goto('/history')
   await memberPage.getByRole('button', { name: 'Espacio' }).click()
   await memberPage.getByRole('option', { name: groupName }).click()
-  await expect(memberPage.getByText(new RegExp(`Compró ${member.name}.*pagó ${owner.name}`))).toBeVisible()
+  await expect(memberPage.getByText(`Compró ${member.name}`, { exact: true })).toBeVisible()
+  await expect(memberPage.getByText(`Pagó ${owner.name}`, { exact: true })).toBeVisible()
 
   await ownerContext.close()
   await memberContext.close()

@@ -36,6 +36,8 @@
 	--font-weight-normal: 400;
 	--font-weight-medium: 500;
 	--font-weight-bold: 700;
+	--control-height: 2.85rem;
+	--control-line-height: 1.25;
 	--border-radius-sm: 8px;
 	--border-radius-md: 14px;
 	--border-radius-lg: 22px;

@@ -116,6 +116,8 @@ usuario posee grupos.
 - Los integrantes retirados pierden acceso en la siguiente petición.
 - Las compras conservan atribuciones de exintegrantes, pero no se pueden asignar
   nuevos responsables fuera de la membresía activa.
+- En listas personales los artículos se asignan automáticamente a su
+  propietario; en grupos solo se ofrecen integrantes activos de ese grupo.
 - El pagador no obtiene permisos adicionales.
 - Las listas archivadas y grupos archivados son de solo lectura, salvo
   restauración, transferencia o abandono.

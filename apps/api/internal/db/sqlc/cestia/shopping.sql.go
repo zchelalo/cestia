@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const archiveList = `-- name: ArchiveList :execrows
@@ -34,6 +35,25 @@ func (q *Queries) ArchiveList(ctx context.Context, arg ArchiveListParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const countPersonalLists = `-- name: CountPersonalLists :one
+SELECT count(*)
+FROM shopping_lists l
+WHERE l.personal_owner_id = $1::uuid
+  AND ($2::boolean = true OR l.archived_at IS NULL)
+`
+
+type CountPersonalListsParams struct {
+	UserID          uuid.UUID `json:"user_id"`
+	IncludeArchived bool      `json:"include_archived"`
+}
+
+func (q *Queries) CountPersonalLists(ctx context.Context, arg CountPersonalListsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPersonalLists, arg.UserID, arg.IncludeArchived)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createItem = `-- name: CreateItem :exec
@@ -209,7 +229,7 @@ func (q *Queries) DeleteItem(ctx context.Context, arg DeleteItemParams) (int64, 
 }
 
 const expensesByList = `-- name: ExpensesByList :many
-SELECT l.id AS list_id, l.name, l.archived_at,
+SELECT l.id AS list_id, l.name, l.archived_at, l.updated_at,
        COALESCE(actual.amount, 0)::text AS actual_known,
        COALESCE(estimated.amount, 0)::text AS estimated_known,
        COALESCE(estimated.pending, 0)::text AS pending_estimated,
@@ -235,7 +255,16 @@ LEFT JOIN LATERAL (
 WHERE (($3::uuid IS NOT NULL AND l.personal_owner_id = $3::uuid)
     OR ($4::uuid IS NOT NULL AND l.group_id = $4::uuid))
   AND ($5::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC
+  AND (
+    $6::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > $6::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = $6::integer
+      AND (l.updated_at, l.id) < ($7::timestamptz, $8::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT $9::integer
 `
 
 type ExpensesByListParams struct {
@@ -244,12 +273,17 @@ type ExpensesByListParams struct {
 	PersonalOwnerID *uuid.UUID `json:"personal_owner_id"`
 	GroupID         *uuid.UUID `json:"group_id"`
 	IncludeArchived bool       `json:"include_archived"`
+	CursorArchived  *int32     `json:"cursor_archived"`
+	CursorUpdatedAt *time.Time `json:"cursor_updated_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 type ExpensesByListRow struct {
 	ListID           uuid.UUID  `json:"list_id"`
 	Name             string     `json:"name"`
 	ArchivedAt       *time.Time `json:"archived_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 	ActualKnown      string     `json:"actual_known"`
 	EstimatedKnown   string     `json:"estimated_known"`
 	PendingEstimated string     `json:"pending_estimated"`
@@ -264,6 +298,10 @@ func (q *Queries) ExpensesByList(ctx context.Context, arg ExpensesByListParams) 
 		arg.PersonalOwnerID,
 		arg.GroupID,
 		arg.IncludeArchived,
+		arg.CursorArchived,
+		arg.CursorUpdatedAt,
+		arg.CursorID,
+		arg.LimitCount,
 	)
 	if err != nil {
 		return nil, err
@@ -276,6 +314,7 @@ func (q *Queries) ExpensesByList(ctx context.Context, arg ExpensesByListParams) 
 			&i.ListID,
 			&i.Name,
 			&i.ArchivedAt,
+			&i.UpdatedAt,
 			&i.ActualKnown,
 			&i.EstimatedKnown,
 			&i.PendingEstimated,
@@ -943,13 +982,19 @@ FROM activity_events a
 LEFT JOIN users u ON u.id = a.actor_id
 WHERE a.scope_type = 'group'
   AND a.group_id = $1::uuid
+  AND (
+    $2::timestamptz IS NULL
+    OR (a.created_at, a.id) < ($2::timestamptz, $3::uuid)
+  )
 ORDER BY a.created_at DESC, a.id DESC
-LIMIT $2::integer
+LIMIT $4::integer
 `
 
 type ListGroupActivityParams struct {
-	GroupID    uuid.UUID `json:"group_id"`
-	LimitCount int32     `json:"limit_count"`
+	GroupID         uuid.UUID  `json:"group_id"`
+	CursorCreatedAt *time.Time `json:"cursor_created_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 type ListGroupActivityRow struct {
@@ -967,7 +1012,12 @@ type ListGroupActivityRow struct {
 }
 
 func (q *Queries) ListGroupActivity(ctx context.Context, arg ListGroupActivityParams) ([]ListGroupActivityRow, error) {
-	rows, err := q.db.Query(ctx, listGroupActivity, arg.GroupID, arg.LimitCount)
+	rows, err := q.db.Query(ctx, listGroupActivity,
+		arg.GroupID,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1019,13 +1069,26 @@ LEFT JOIN group_members gm
 WHERE l.group_id = $2::uuid
   AND (g.owner_user_id = $1::uuid OR gm.user_id IS NOT NULL)
   AND ($3::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC
+  AND (
+    $4::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > $4::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = $4::integer
+      AND (l.updated_at, l.id) < ($5::timestamptz, $6::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT $7::integer
 `
 
 type ListGroupListsParams struct {
-	UserID          uuid.UUID `json:"user_id"`
-	GroupID         uuid.UUID `json:"group_id"`
-	IncludeArchived bool      `json:"include_archived"`
+	UserID          uuid.UUID  `json:"user_id"`
+	GroupID         uuid.UUID  `json:"group_id"`
+	IncludeArchived bool       `json:"include_archived"`
+	CursorArchived  *int32     `json:"cursor_archived"`
+	CursorUpdatedAt *time.Time `json:"cursor_updated_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 type ListGroupListsRow struct {
@@ -1045,7 +1108,15 @@ type ListGroupListsRow struct {
 }
 
 func (q *Queries) ListGroupLists(ctx context.Context, arg ListGroupListsParams) ([]ListGroupListsRow, error) {
-	rows, err := q.db.Query(ctx, listGroupLists, arg.UserID, arg.GroupID, arg.IncludeArchived)
+	rows, err := q.db.Query(ctx, listGroupLists,
+		arg.UserID,
+		arg.GroupID,
+		arg.IncludeArchived,
+		arg.CursorArchived,
+		arg.CursorUpdatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1087,8 +1158,30 @@ FROM shopping_list_items i
 LEFT JOIN users u ON u.id = i.assigned_to
 WHERE i.list_id = $1::uuid
   AND i.deleted_at IS NULL
+  AND (
+    $2::text = 'all'
+    OR ($2::text = 'pending' AND NOT EXISTS (
+      SELECT 1 FROM purchases p1 WHERE p1.item_id = i.id AND p1.reversed_at IS NULL
+    ))
+    OR ($2::text = 'purchased' AND EXISTS (
+      SELECT 1 FROM purchases p2 WHERE p2.item_id = i.id AND p2.reversed_at IS NULL
+    ))
+  )
+  AND (
+    $3::timestamptz IS NULL
+    OR (i.created_at, i.id) > ($3::timestamptz, $4::uuid)
+  )
 ORDER BY i.created_at, i.id
+LIMIT $5::integer
 `
+
+type ListItemsParams struct {
+	ListID          uuid.UUID  `json:"list_id"`
+	ItemFilter      string     `json:"item_filter"`
+	CursorCreatedAt *time.Time `json:"cursor_created_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
+}
 
 type ListItemsRow struct {
 	ID                 uuid.UUID  `json:"id"`
@@ -1108,8 +1201,14 @@ type ListItemsRow struct {
 	AssignedToName     *string    `json:"assigned_to_name"`
 }
 
-func (q *Queries) ListItems(ctx context.Context, listID uuid.UUID) ([]ListItemsRow, error) {
-	rows, err := q.db.Query(ctx, listItems, listID)
+func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]ListItemsRow, error) {
+	rows, err := q.db.Query(ctx, listItems,
+		arg.ListID,
+		arg.ItemFilter,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1144,6 +1243,86 @@ func (q *Queries) ListItems(ctx context.Context, listID uuid.UUID) ([]ListItemsR
 	return items, nil
 }
 
+const listPayerExpenses = `-- name: ListPayerExpenses :many
+SELECT p.paid_by, COALESCE(u.display_name, 'No identificado')::text AS display_name,
+       COALESCE(SUM(p.total_amount), 0)::text AS amount, COUNT(p.id) AS purchase_count
+FROM purchases p
+JOIN shopping_list_items i ON i.id = p.item_id
+JOIN shopping_lists l ON l.id = i.list_id
+LEFT JOIN users u ON u.id = p.paid_by
+WHERE p.reversed_at IS NULL
+  AND (($1::uuid IS NOT NULL AND l.personal_owner_id = $1::uuid)
+    OR ($2::uuid IS NOT NULL AND l.group_id = $2::uuid))
+  AND ($3::boolean = true OR l.archived_at IS NULL)
+  AND ($4::timestamptz IS NULL OR p.purchased_at >= $4::timestamptz)
+  AND ($5::timestamptz IS NULL OR p.purchased_at < $5::timestamptz)
+GROUP BY p.paid_by, u.display_name
+HAVING (
+  $6::numeric IS NULL
+  OR COALESCE(SUM(p.total_amount), 0) < $6::numeric
+  OR (
+    COALESCE(SUM(p.total_amount), 0) = $6::numeric
+    AND COALESCE(p.paid_by, '00000000-0000-0000-0000-000000000000'::uuid)
+      < $7::uuid
+  )
+)
+ORDER BY COALESCE(SUM(p.total_amount), 0) DESC,
+         COALESCE(p.paid_by, '00000000-0000-0000-0000-000000000000'::uuid) DESC
+LIMIT $8::integer
+`
+
+type ListPayerExpensesParams struct {
+	PersonalOwnerID *uuid.UUID     `json:"personal_owner_id"`
+	GroupID         *uuid.UUID     `json:"group_id"`
+	IncludeArchived bool           `json:"include_archived"`
+	FromAt          *time.Time     `json:"from_at"`
+	ToAt            *time.Time     `json:"to_at"`
+	CursorAmount    pgtype.Numeric `json:"cursor_amount"`
+	CursorPayerID   *uuid.UUID     `json:"cursor_payer_id"`
+	LimitCount      int32          `json:"limit_count"`
+}
+
+type ListPayerExpensesRow struct {
+	PaidBy        *uuid.UUID `json:"paid_by"`
+	DisplayName   string     `json:"display_name"`
+	Amount        string     `json:"amount"`
+	PurchaseCount int64      `json:"purchase_count"`
+}
+
+func (q *Queries) ListPayerExpenses(ctx context.Context, arg ListPayerExpensesParams) ([]ListPayerExpensesRow, error) {
+	rows, err := q.db.Query(ctx, listPayerExpenses,
+		arg.PersonalOwnerID,
+		arg.GroupID,
+		arg.IncludeArchived,
+		arg.FromAt,
+		arg.ToAt,
+		arg.CursorAmount,
+		arg.CursorPayerID,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPayerExpensesRow{}
+	for rows.Next() {
+		var i ListPayerExpensesRow
+		if err := rows.Scan(
+			&i.PaidBy,
+			&i.DisplayName,
+			&i.Amount,
+			&i.PurchaseCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPersonalActivity = `-- name: ListPersonalActivity :many
 SELECT a.id, a.scope_type, a.actor_id, u.display_name AS actor_name, a.group_id,
        a.list_id, a.item_id, a.purchase_id, a.action, a.payload, a.created_at
@@ -1152,13 +1331,19 @@ LEFT JOIN users u ON u.id = a.actor_id
 WHERE a.scope_type = 'personal'
   AND (a.actor_id = $1::uuid
     OR a.list_id IN (SELECT id FROM shopping_lists WHERE personal_owner_id = $1::uuid))
+  AND (
+    $2::timestamptz IS NULL
+    OR (a.created_at, a.id) < ($2::timestamptz, $3::uuid)
+  )
 ORDER BY a.created_at DESC, a.id DESC
-LIMIT $2::integer
+LIMIT $4::integer
 `
 
 type ListPersonalActivityParams struct {
-	UserID     uuid.UUID `json:"user_id"`
-	LimitCount int32     `json:"limit_count"`
+	UserID          uuid.UUID  `json:"user_id"`
+	CursorCreatedAt *time.Time `json:"cursor_created_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 type ListPersonalActivityRow struct {
@@ -1176,7 +1361,12 @@ type ListPersonalActivityRow struct {
 }
 
 func (q *Queries) ListPersonalActivity(ctx context.Context, arg ListPersonalActivityParams) ([]ListPersonalActivityRow, error) {
-	rows, err := q.db.Query(ctx, listPersonalActivity, arg.UserID, arg.LimitCount)
+	rows, err := q.db.Query(ctx, listPersonalActivity,
+		arg.UserID,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1222,12 +1412,25 @@ SELECT l.id, l.name, l.description, l.personal_owner_id, l.group_id, l.created_b
 FROM shopping_lists l
 WHERE l.personal_owner_id = $1::uuid
   AND ($2::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC
+  AND (
+    $3::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > $3::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = $3::integer
+      AND (l.updated_at, l.id) < ($4::timestamptz, $5::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT $6::integer
 `
 
 type ListPersonalListsParams struct {
-	UserID          uuid.UUID `json:"user_id"`
-	IncludeArchived bool      `json:"include_archived"`
+	UserID          uuid.UUID  `json:"user_id"`
+	IncludeArchived bool       `json:"include_archived"`
+	CursorArchived  *int32     `json:"cursor_archived"`
+	CursorUpdatedAt *time.Time `json:"cursor_updated_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 type ListPersonalListsRow struct {
@@ -1247,7 +1450,14 @@ type ListPersonalListsRow struct {
 }
 
 func (q *Queries) ListPersonalLists(ctx context.Context, arg ListPersonalListsParams) ([]ListPersonalListsRow, error) {
-	rows, err := q.db.Query(ctx, listPersonalLists, arg.UserID, arg.IncludeArchived)
+	rows, err := q.db.Query(ctx, listPersonalLists,
+		arg.UserID,
+		arg.IncludeArchived,
+		arg.CursorArchived,
+		arg.CursorUpdatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

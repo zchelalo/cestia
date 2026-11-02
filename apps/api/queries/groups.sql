@@ -65,8 +65,37 @@ LEFT JOIN group_members gm
   ON gm.group_id = g.id
  AND gm.user_id = sqlc.arg(user_id)::uuid
  AND gm.removed_at IS NULL
-WHERE g.owner_user_id = sqlc.arg(user_id)::uuid OR gm.user_id IS NOT NULL
-ORDER BY g.archived_at NULLS FIRST, lower(g.name);
+WHERE (g.owner_user_id = sqlc.arg(user_id)::uuid OR gm.user_id IS NOT NULL)
+  AND (
+    sqlc.narg(cursor_archived)::integer IS NULL
+    OR (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END) > sqlc.narg(cursor_archived)::integer
+    OR (
+      (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END) = sqlc.narg(cursor_archived)::integer
+      AND (lower(g.name), g.id) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_id)::uuid)
+    )
+  )
+ORDER BY (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END), lower(g.name), g.id
+LIMIT sqlc.arg(limit_count)::integer;
+
+-- name: CountGroupsForUser :one
+SELECT count(*)
+FROM groups g
+LEFT JOIN group_members gm
+  ON gm.group_id = g.id
+ AND gm.user_id = sqlc.arg(user_id)::uuid
+ AND gm.removed_at IS NULL
+WHERE g.owner_user_id = sqlc.arg(user_id)::uuid OR gm.user_id IS NOT NULL;
+
+-- name: CountGroupMembersForUser :one
+SELECT COALESCE(SUM((
+  SELECT count(*) FROM group_members m WHERE m.group_id = g.id AND m.removed_at IS NULL
+)), 0)::bigint AS members_total
+FROM groups g
+LEFT JOIN group_members gm
+  ON gm.group_id = g.id
+ AND gm.user_id = sqlc.arg(user_id)::uuid
+ AND gm.removed_at IS NULL
+WHERE g.owner_user_id = sqlc.arg(user_id)::uuid OR gm.user_id IS NOT NULL;
 
 -- name: CreateGroup :exec
 INSERT INTO groups (id, name, description, owner_user_id, created_by, version, created_at, updated_at)
@@ -105,8 +134,27 @@ JOIN users u ON u.id = gm.user_id
 JOIN groups g ON g.id = gm.group_id
 WHERE gm.group_id = sqlc.arg(group_id)::uuid
   AND gm.removed_at IS NULL
+  AND (sqlc.arg(include_owner)::boolean = true OR g.owner_user_id <> u.id)
+  AND (
+    sqlc.narg(cursor_priority)::integer IS NULL
+    OR (CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END) > sqlc.narg(cursor_priority)::integer
+    OR (
+      (CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END) = sqlc.narg(cursor_priority)::integer
+      AND (lower(u.display_name), u.id) > (sqlc.narg(cursor_name)::text, sqlc.narg(cursor_id)::uuid)
+    )
+  )
 ORDER BY CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END,
-         lower(u.display_name);
+         lower(u.display_name), u.id
+LIMIT sqlc.arg(limit_count)::integer;
+
+-- name: CountGroupMembers :one
+SELECT count(*)
+FROM group_members gm
+JOIN users u ON u.id = gm.user_id
+JOIN groups g ON g.id = gm.group_id
+WHERE gm.group_id = sqlc.arg(group_id)::uuid
+  AND gm.removed_at IS NULL
+  AND (sqlc.arg(include_owner)::boolean = true OR g.owner_user_id <> u.id);
 
 -- name: GetGroupMemberRole :one
 SELECT COALESCE(CASE WHEN g.owner_user_id = sqlc.arg(user_id)::uuid THEN 'owner' ELSE gm.role END, '')::text AS role
@@ -219,7 +267,13 @@ SELECT i.id, i.group_id, g.name AS group_name, i.email, i.invited_by, i.status,
 FROM group_invitations i
 JOIN groups g ON g.id = i.group_id
 WHERE i.group_id = sqlc.arg(group_id)::uuid
-ORDER BY i.created_at DESC;
+  AND (sqlc.arg(status_filter)::text = '' OR i.status = sqlc.arg(status_filter)::text)
+  AND (
+    sqlc.narg(cursor_created_at)::timestamptz IS NULL
+    OR (i.created_at, i.id) < (sqlc.narg(cursor_created_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+  )
+ORDER BY i.created_at DESC, i.id DESC
+LIMIT sqlc.arg(limit_count)::integer;
 
 -- name: GetInvitationByID :one
 SELECT i.id, i.group_id, g.name AS group_name, i.email, i.invited_by, i.status,

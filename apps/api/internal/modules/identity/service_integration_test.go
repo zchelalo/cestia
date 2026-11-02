@@ -62,7 +62,7 @@ func TestIntegrationPasswordChangeRejectsOldCredentials(t *testing.T) {
 	if _, err := service.Login(ctx, user.Email, oldPassword, "127.0.0.1"); err == nil {
 		t.Fatal("login with the replaced password must fail")
 	}
-	sessions, err := service.Sessions(ctx, user.ID)
+	sessions, _, err := service.Sessions(ctx, user.ID, "", 0)
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}

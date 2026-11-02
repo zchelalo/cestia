@@ -4,19 +4,57 @@ import { ArrowRight, Plus, ShoppingBasket, Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import { SummaryCard } from "@/components/SummaryCard";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
 import { formatDate, formatMoney } from "@/shared/money";
-import type { Dashboard } from "@/shared/types";
+import { pageFetcher } from "@/shared/pages";
+import type {
+	Activity,
+	DashboardSummary,
+	Group,
+	Purchase,
+	ShoppingList,
+} from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
+
+function SectionError({ onRetry }: { onRetry: () => void }) {
+	return (
+		<div className={styles.empty}>
+			No se pudieron cargar los datos.{" "}
+			<button type="button" className={styles.small} onClick={onRetry}>
+				Reintentar
+			</button>
+		</div>
+	);
+}
 
 export function DashboardPage() {
 	const { t } = useTranslation();
 	const dashboard = useQuery({
-		queryKey: ["dashboard"],
-		queryFn: () => apiData<Dashboard>("/api/v1/dashboard"),
+		queryKey: ["dashboard", "summary"],
+		queryFn: () => apiData<DashboardSummary>("/api/v1/dashboard/summary"),
+	});
+	const groups = useCursorPage<Group>({
+		queryKey: ["groups", "dashboard"],
+		fetchPage: pageFetcher<Group>("/api/v1/groups"),
+	});
+	const lists = useCursorPage<ShoppingList>({
+		queryKey: ["lists", "dashboard"],
+		fetchPage: pageFetcher<ShoppingList>("/api/v1/shopping-lists", {
+			include_archived: "false",
+		}),
+	});
+	const purchases = useCursorPage<Purchase>({
+		queryKey: ["purchases", "dashboard"],
+		fetchPage: pageFetcher<Purchase>("/api/v1/purchases"),
+	});
+	const activity = useCursorPage<Activity>({
+		queryKey: ["activity", "dashboard"],
+		fetchPage: pageFetcher<Activity>("/api/v1/activity"),
 	});
 
 	if (dashboard.isLoading) return <LoadingState />;
@@ -29,10 +67,6 @@ export function DashboardPage() {
 		);
 	const data = dashboard.data;
 	if (!data) return null;
-	const memberTotal = data.groups.reduce(
-		(sum, group) => sum + group.member_count,
-		0,
-	);
 
 	return (
 		<div className={styles.page}>
@@ -40,6 +74,7 @@ export function DashboardPage() {
 				eyebrow={formatDate(new Date().toISOString())}
 				title={t("dashboard.title")}
 				subtitle={t("dashboard.subtitle")}
+				actionsGrid
 				actions={
 					<>
 						<Link to="/personal">
@@ -71,16 +106,16 @@ export function DashboardPage() {
 				/>
 				<SummaryCard
 					label={t("dashboard.groups")}
-					value={data.groups.length}
+					value={data.groups_count}
 					hint={
-						memberTotal === 1
+						data.members_total === 1
 							? "1 integrante en total"
-							: `${memberTotal} integrantes en total`
+							: `${data.members_total} integrantes en total`
 					}
 				/>
 				<SummaryCard
 					label={t("dashboard.lists")}
-					value={data.personal_lists.length}
+					value={data.personal_lists_count}
 					hint="Espacio privado"
 				/>
 			</section>
@@ -92,11 +127,13 @@ export function DashboardPage() {
 						{t("dashboard.viewAll")} →
 					</Link>
 				</div>
-				{data.groups.length === 0 ? (
+				{groups.isError ? (
+					<SectionError onRetry={() => groups.refetch()} />
+				) : groups.items.length === 0 ? (
 					<div className={styles.empty}>{t("groups.empty")}</div>
 				) : (
 					<div className={styles.grid3}>
-						{data.groups.slice(0, 3).map((group) => (
+						{groups.items.map((group) => (
 							<Link
 								key={group.id}
 								to="/groups/$groupId"
@@ -127,26 +164,36 @@ export function DashboardPage() {
 						))}
 					</div>
 				)}
+				<CursorPagination
+					label="Paginación de grupos"
+					canGoNext={groups.canGoNext}
+					canGoPrevious={groups.canGoPrevious}
+					isFetching={groups.isFetching}
+					onNext={groups.goNext}
+					onPrevious={groups.goPrevious}
+				/>
 			</section>
 
 			<div className={styles.grid2}>
-				<section className={styles.section}>
+				<section className={`${styles.section} ${styles.dashboardSection}`}>
 					<div className={styles.sectionHead}>
 						<h2 className={styles.sectionTitle}>{t("dashboard.lists")}</h2>
 						<Link to="/personal" className={styles.small}>
 							{t("dashboard.viewAll")} →
 						</Link>
 					</div>
-					{data.personal_lists.length === 0 ? (
+					{lists.isError ? (
+						<SectionError onRetry={() => lists.refetch()} />
+					) : lists.items.length === 0 ? (
 						<div className={styles.empty}>{t("lists.empty")}</div>
 					) : (
-						<div className={styles.list}>
-							{data.personal_lists.slice(0, 5).map((list) => (
+						<div className={`${styles.list} ${styles.dashboardBody}`}>
+							{lists.items.map((list) => (
 								<Link
 									key={list.id}
 									to="/lists/$listId"
 									params={{ listId: list.id }}
-									className={styles.row}
+									className={`${styles.row} ${styles.compactRow}`}
 									style={{ textDecoration: "none", color: "inherit" }}
 								>
 									<span className={styles.rowMain}>
@@ -161,9 +208,17 @@ export function DashboardPage() {
 							))}
 						</div>
 					)}
+					<CursorPagination
+						label="Paginación de mis listas"
+						canGoNext={lists.canGoNext}
+						canGoPrevious={lists.canGoPrevious}
+						isFetching={lists.isFetching}
+						onNext={lists.goNext}
+						onPrevious={lists.goPrevious}
+					/>
 				</section>
 
-				<section className={styles.section}>
+				<section className={`${styles.section} ${styles.dashboardSection}`}>
 					<div className={styles.sectionHead}>
 						<h2 className={styles.sectionTitle}>
 							{t("dashboard.recentPurchases")}
@@ -172,16 +227,21 @@ export function DashboardPage() {
 							{t("dashboard.viewAll")} →
 						</Link>
 					</div>
-					{data.recent_purchases.length === 0 ? (
+					{purchases.isError ? (
+						<SectionError onRetry={() => purchases.refetch()} />
+					) : purchases.items.length === 0 ? (
 						<div className={styles.empty}>
 							<ShoppingBasket size={24} />
 							<br />
 							{t("common.noResults")}
 						</div>
 					) : (
-						<div className={styles.list}>
-							{data.recent_purchases.map((purchase) => (
-								<div key={purchase.id} className={styles.row}>
+						<div className={`${styles.list} ${styles.dashboardBody}`}>
+							{purchases.items.map((purchase) => (
+								<div
+									key={purchase.id}
+									className={`${styles.row} ${styles.compactRow}`}
+								>
 									<span className={styles.rowMain}>
 										<span className={styles.rowTitle}>
 											{purchase.item_name}
@@ -198,6 +258,14 @@ export function DashboardPage() {
 							))}
 						</div>
 					)}
+					<CursorPagination
+						label="Paginación de compras recientes"
+						canGoNext={purchases.canGoNext}
+						canGoPrevious={purchases.canGoPrevious}
+						isFetching={purchases.isFetching}
+						onNext={purchases.goNext}
+						onPrevious={purchases.goPrevious}
+					/>
 				</section>
 			</div>
 
@@ -208,8 +276,20 @@ export function DashboardPage() {
 					</h2>
 				</div>
 				<div className={styles.card}>
-					<ActivityTimeline events={data.recent_activity} />
+					{activity.isError ? (
+						<SectionError onRetry={() => activity.refetch()} />
+					) : (
+						<ActivityTimeline events={activity.items} />
+					)}
 				</div>
+				<CursorPagination
+					label="Paginación de actividad reciente"
+					canGoNext={activity.canGoNext}
+					canGoPrevious={activity.canGoPrevious}
+					isFetching={activity.isFetching}
+					onNext={activity.goNext}
+					onPrevious={activity.goPrevious}
+				/>
 			</section>
 		</div>
 	);

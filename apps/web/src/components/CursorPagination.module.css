@@ -1,0 +1,21 @@
+.pagination {
+	align-items: center;
+	display: flex;
+	gap: var(--spacing-2);
+	justify-content: flex-end;
+	margin-top: var(--spacing-1);
+}
+
+.pagination > button {
+	color: var(--color-muted);
+}
+
+.pagination > button:disabled {
+	opacity: 0.4;
+}
+
+@media (max-width: 680px) {
+	.pagination {
+		width: 100%;
+	}
+}

@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,7 +15,9 @@ import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
 import { formatMoney } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import type { ShoppingList, Summary } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 const schema = z.object({
 	name: z
@@ -33,12 +36,11 @@ export function PersonalListsPage() {
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState("");
 	const queryClient = useQueryClient();
-	const lists = useQuery({
-		queryKey: ["lists", "personal", showArchived],
-		queryFn: () =>
-			apiData<ShoppingList[]>(
-				`/api/v1/shopping-lists?include_archived=${showArchived}`,
-			),
+	const lists = useCursorPage<ShoppingList>({
+		queryKey: ["lists", "personal", { archived: showArchived }],
+		fetchPage: pageFetcher<ShoppingList>("/api/v1/shopping-lists", {
+			include_archived: String(showArchived),
+		}),
 	});
 	const summary = useQuery({
 		queryKey: ["summary", "personal"],
@@ -76,7 +78,7 @@ export function PersonalListsPage() {
 	if (lists.isError)
 		return (
 			<ErrorState
-				message={lists.error.message}
+				message={lists.error?.message ?? "No se pudo cargar la lista."}
 				onRetry={() => lists.refetch()}
 			/>
 		);
@@ -135,16 +137,16 @@ export function PersonalListsPage() {
 				</div>
 			</div>
 
-			{lists.data?.length === 0 ? (
+			{lists.items.length === 0 ? (
 				<div className={styles.empty}>{t("lists.empty")}</div>
 			) : (
-				<div className={styles.list}>
-					{lists.data?.map((list) => (
+				<div className={`${styles.list} ${styles.dashboardBody}`}>
+					{lists.items.map((list) => (
 						<Link
 							key={list.id}
 							to="/lists/$listId"
 							params={{ listId: list.id }}
-							className={styles.row}
+							className={`${styles.row} ${styles.compactRow}`}
 							style={{ textDecoration: "none", color: "inherit" }}
 						>
 							<span className={styles.rowMain}>
@@ -170,6 +172,15 @@ export function PersonalListsPage() {
 					))}
 				</div>
 			)}
+
+			<CursorPagination
+				label="Paginación de mis listas"
+				canGoNext={lists.canGoNext}
+				canGoPrevious={lists.canGoPrevious}
+				isFetching={lists.isFetching}
+				onNext={lists.goNext}
+				onPrevious={lists.goPrevious}
+			/>
 
 			{creating ? (
 				<Modal title={t("lists.newList")} onClose={() => setCreating(false)}>

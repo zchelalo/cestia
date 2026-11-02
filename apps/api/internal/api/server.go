@@ -71,6 +71,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/v1/auth/resend-verification", s.authenticated(s.csrf(http.HandlerFunc(s.resendVerification))))
 
 	s.mux.Handle("GET /api/v1/dashboard", s.private(http.HandlerFunc(s.dashboard)))
+	s.mux.Handle("GET /api/v1/dashboard/summary", s.private(http.HandlerFunc(s.dashboardSummary)))
 	s.mux.Handle("GET /api/v1/groups/options", s.private(http.HandlerFunc(s.groupOptions)))
 	s.mux.Handle("GET /api/v1/groups/{groupId}/members/options", s.private(http.HandlerFunc(s.memberOptions)))
 	s.mux.Handle("GET /api/v1/groups", s.private(http.HandlerFunc(s.listGroups)))
@@ -108,6 +109,7 @@ func (s *Server) routes() {
 	s.mux.Handle("POST /api/v1/purchases/{purchaseId}/reverse", s.private(s.csrf(http.HandlerFunc(s.reversePurchase))))
 	s.mux.Handle("GET /api/v1/expenses/summary", s.private(http.HandlerFunc(s.expensesSummary)))
 	s.mux.Handle("GET /api/v1/expenses/by-list", s.private(http.HandlerFunc(s.expensesByList)))
+	s.mux.Handle("GET /api/v1/expenses/by-payer", s.private(http.HandlerFunc(s.expensesByPayer)))
 	s.mux.Handle("GET /api/v1/purchases", s.private(http.HandlerFunc(s.purchaseHistory)))
 	s.mux.Handle("GET /api/v1/activity", s.private(http.HandlerFunc(s.activity)))
 }

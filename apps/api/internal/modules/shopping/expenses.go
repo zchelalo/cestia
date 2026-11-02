@@ -43,16 +43,28 @@ func (s *Service) Summary(ctx context.Context, userID uuid.UUID, filter ExpenseF
 	return summary, nil
 }
 
-func (s *Service) ExpensesByList(ctx context.Context, userID uuid.UUID, filter ExpenseFilter) ([]data.ListExpense, error) {
+func (s *Service) ExpensesByList(ctx context.Context, userID uuid.UUID, filter ExpenseFilter, cursor string, limit int) ([]data.ListExpense, string, error) {
 	scope, err := s.scope(ctx, userID, filter.GroupID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	items, err := data.ExpensesByList(ctx, s.store, scope, filter.From, filter.To, filter.IncludeArchived)
+	items, next, err := data.ExpensesByList(ctx, s.store, scope, filter.From, filter.To, filter.IncludeArchived, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return items, nil
+	return items, next, nil
+}
+
+func (s *Service) PayerExpenses(ctx context.Context, userID uuid.UUID, filter ExpenseFilter, cursor string, limit int) ([]data.PayerTotal, string, error) {
+	scope, err := s.scope(ctx, userID, filter.GroupID)
+	if err != nil {
+		return nil, "", err
+	}
+	payers, next, err := data.PayerExpenses(ctx, s.store, scope, filter.From, filter.To, filter.IncludeArchived, cursor, limit)
+	if err != nil {
+		return nil, "", apperr.From(err)
+	}
+	return payers, next, nil
 }
 
 func (s *Service) PurchaseHistory(ctx context.Context, userID uuid.UUID, filter HistoryFilter) ([]data.Purchase, string, error) {

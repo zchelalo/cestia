@@ -125,6 +125,7 @@ export type Summary = {
 	pending_count: number;
 	purchased_count: number;
 	unidentified_paid: string;
+	max_payer_amount: string;
 	by_payer: PayerTotal[];
 };
 
@@ -132,6 +133,7 @@ export type ListExpense = {
 	list_id: string;
 	name: string;
 	archived_at: string | null;
+	updated_at: string;
 	actual_known: string;
 	estimated_known: string;
 	pending_estimated: string;
@@ -159,6 +161,13 @@ export type Dashboard = {
 	summary: Summary;
 	recent_purchases: Purchase[];
 	recent_activity: Activity[];
+};
+
+export type DashboardSummary = {
+	summary: Summary;
+	groups_count: number;
+	members_total: number;
+	personal_lists_count: number;
 };
 
 export type Session = {

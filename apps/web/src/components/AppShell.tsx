@@ -84,8 +84,9 @@ export function AppShell({ children }: { children?: ReactNode }) {
 						</span>
 					</div>
 					<Button
-						variant="quiet"
+						variant="secondary"
 						small
+						fullWidth
 						onClick={signOut}
 						disabled={logout.isPending}
 					>
@@ -109,9 +110,11 @@ export function AppShell({ children }: { children?: ReactNode }) {
 						<Settings size={18} />
 					</Link>
 					<Button
-						variant="quiet"
+						variant="secondary"
 						small
+						className={styles.mobileSignOut}
 						onClick={signOut}
+						disabled={logout.isPending}
 						aria-label={t("auth.signOut")}
 					>
 						<LogOut size={18} />
@@ -126,10 +129,11 @@ export function AppShell({ children }: { children?: ReactNode }) {
 					<Link
 						key={to}
 						to={to}
+						aria-label={t(label)}
+						title={t(label)}
 						className={`${styles.mobileNavLink} ${isActive(to) ? styles.mobileNavLinkActive : ""}`}
 					>
-						<Icon size={20} />
-						<span>{t(label)}</span>
+						<Icon size={21} />
 					</Link>
 				))}
 			</nav>

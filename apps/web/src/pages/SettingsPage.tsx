@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { LogOut, Shield, Trash2, UserRound } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -7,6 +7,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input } from "@/components/Field";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
@@ -14,8 +15,10 @@ import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
 import { formatDate } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import { useSession } from "@/shared/session";
 import type { Session, User } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 import { useLocalSelectOptions } from "@/shared/use-local-select-options";
 
 const profileSchema = z.object({
@@ -37,9 +40,9 @@ export function SettingsPage() {
 	const { data: me } = useSession();
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
-	const sessions = useQuery({
+	const sessions = useCursorPage<Session>({
 		queryKey: ["sessions"],
-		queryFn: () => apiData<Session[]>("/api/v1/me/sessions"),
+		fetchPage: pageFetcher<Session>("/api/v1/me/sessions"),
 	});
 	const profileForm = useForm<Profile>({
 		resolver: zodResolver(profileSchema),
@@ -78,7 +81,7 @@ export function SettingsPage() {
 		mutationFn: (id: string) =>
 			apiData(`/api/v1/me/sessions/${id}`, { method: "DELETE" }),
 		onSuccess: async (_data, id) => {
-			const current = sessions.data?.find(
+			const current = sessions.items.find(
 				(session) => session.id === id,
 			)?.current;
 			if (current) {
@@ -121,7 +124,9 @@ export function SettingsPage() {
 	if (sessions.isError)
 		return (
 			<ErrorState
-				message={sessions.error.message}
+				message={
+					sessions.error?.message ?? "No se pudieron cargar las sesiones."
+				}
 				onRetry={() => sessions.refetch()}
 			/>
 		);
@@ -270,7 +275,7 @@ export function SettingsPage() {
 					Revoca cualquier sesión que no reconozcas.
 				</p>
 				<div className={styles.list} style={{ marginTop: "1rem" }}>
-					{sessions.data?.map((session) => (
+					{sessions.items.map((session) => (
 						<div key={session.id} className={styles.row}>
 							<span className={styles.rowMain}>
 								<span className={styles.rowTitle}>
@@ -293,6 +298,14 @@ export function SettingsPage() {
 						</div>
 					))}
 				</div>
+				<CursorPagination
+					label="Paginación de sesiones"
+					canGoNext={sessions.canGoNext}
+					canGoPrevious={sessions.canGoPrevious}
+					isFetching={sessions.isFetching}
+					onNext={sessions.goNext}
+					onPrevious={sessions.goPrevious}
+				/>
 			</section>
 
 			<section className={`${styles.card} ${styles.dangerZone}`}>

@@ -53,12 +53,12 @@ type reverseRequest struct {
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	userID := currentUser(r.Context()).ID
-	groups, err := s.groups.List(r.Context(), userID)
+	groups, _, err := s.groups.List(r.Context(), userID, "", 0)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	lists, err := s.shopping.Lists(r.Context(), userID, nil, false)
+	lists, _, err := s.shopping.Lists(r.Context(), userID, nil, false, "", 0)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -73,7 +73,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	events, err := s.shopping.Activity(r.Context(), userID, nil, 8)
+	events, _, err := s.shopping.Activity(r.Context(), userID, nil, "", 8)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -84,19 +84,47 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	}, nil)
 }
 
+func (s *Server) dashboardSummary(w http.ResponseWriter, r *http.Request) {
+	userID := currentUser(r.Context()).ID
+	groupCount, memberTotal, err := s.groups.Count(r.Context(), userID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	listCount, err := s.shopping.CountPersonalLists(r.Context(), userID)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	summary, err := s.shopping.Summary(r.Context(), userID, shopping.ExpenseFilter{IncludeArchived: true})
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, map[string]any{
+		"summary": summary, "groups_count": groupCount,
+		"members_total": memberTotal, "personal_lists_count": listCount,
+	}, nil)
+}
+
 func (s *Server) listShoppingLists(w http.ResponseWriter, r *http.Request) {
 	groupID, err := optionalUUID(r.URL.Query().Get("group_id"))
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	includeArchived, _ := strconv.ParseBool(defaultString(r.URL.Query().Get("include_archived"), "false"))
-	lists, err := s.shopping.Lists(r.Context(), currentUser(r.Context()).ID, groupID, includeArchived)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, lists, nil)
+	includeArchived, _ := strconv.ParseBool(defaultString(r.URL.Query().Get("include_archived"), "false"))
+	lists, next, err := s.shopping.Lists(r.Context(), currentUser(r.Context()).ID, groupID, includeArchived, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, lists, page.pageMeta(next))
 }
 
 func (s *Server) createShoppingList(w http.ResponseWriter, r *http.Request) {
@@ -188,12 +216,18 @@ func (s *Server) listItems(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	items, err := s.shopping.Items(r.Context(), currentUser(r.Context()).ID, listID)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, items, nil)
+	items, next, err := s.shopping.Items(r.Context(), currentUser(r.Context()).ID, listID,
+		r.URL.Query().Get("filter"), page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, items, page.pageMeta(next))
 }
 
 func (s *Server) createItem(w http.ResponseWriter, r *http.Request) {
@@ -354,12 +388,36 @@ func (s *Server) expensesByList(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	items, err := s.shopping.ExpensesByList(r.Context(), currentUser(r.Context()).ID, filter)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, items, nil)
+	items, next, err := s.shopping.ExpensesByList(r.Context(), currentUser(r.Context()).ID, filter, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, items, page.pageMeta(next))
+}
+
+func (s *Server) expensesByPayer(w http.ResponseWriter, r *http.Request) {
+	filter, err := expenseFilter(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	page, err := parsePage(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	payers, next, err := s.shopping.PayerExpenses(r.Context(), currentUser(r.Context()).ID, filter, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, payers, page.pageMeta(next))
 }
 
 func (s *Server) purchaseHistory(w http.ResponseWriter, r *http.Request) {
@@ -399,7 +457,7 @@ func (s *Server) purchaseHistory(w http.ResponseWriter, r *http.Request) {
 		PurchasedBy: purchasedBy, Cursor: r.URL.Query().Get("cursor"), Limit: limit,
 	})
 	if err != nil {
-		s.writeError(w, r, err)
+		s.writeError(w, r, pageError(err))
 		return
 	}
 	if limit <= 0 || limit > 100 {
@@ -414,13 +472,17 @@ func (s *Server) activity(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	events, err := s.shopping.Activity(r.Context(), currentUser(r.Context()).ID, groupID, limit)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, events, nil)
+	events, next, err := s.shopping.Activity(r.Context(), currentUser(r.Context()).ID, groupID, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, events, page.pageMeta(next))
 }
 
 func expenseFilter(r *http.Request) (shopping.ExpenseFilter, error) {

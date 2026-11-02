@@ -110,7 +110,12 @@ FROM sessions
 WHERE user_id = sqlc.arg(user_id)::uuid
   AND revoked_at IS NULL
   AND expires_at > sqlc.arg(now)::timestamptz
-ORDER BY created_at DESC;
+  AND (
+    sqlc.narg(cursor_created_at)::timestamptz IS NULL
+    OR (created_at, id) < (sqlc.narg(cursor_created_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(limit_count)::integer;
 
 -- name: CreateEmailAction :exec
 INSERT INTO email_actions (id, user_id, purpose, token_hash, generation, expires_at, created_at)

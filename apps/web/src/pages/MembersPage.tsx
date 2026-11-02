@@ -10,14 +10,17 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Modal } from "@/components/Modal";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
 import { formatDate } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import { useSession } from "@/shared/session";
 import type { Group, Invitation, Member } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 export function MembersPage() {
 	const { t } = useTranslation();
@@ -32,14 +35,23 @@ export function MembersPage() {
 		queryKey: ["group", groupId],
 		queryFn: () => apiData<Group>(`/api/v1/groups/${groupId}`),
 	});
-	const members = useQuery({
+	const members = useCursorPage<Member>({
 		queryKey: ["members", groupId],
-		queryFn: () => apiData<Member[]>(`/api/v1/groups/${groupId}/members`),
+		fetchPage: pageFetcher<Member>(`/api/v1/groups/${groupId}/members`),
 	});
-	const invitations = useQuery({
-		queryKey: ["invitations", groupId],
-		queryFn: () =>
-			apiData<Invitation[]>(`/api/v1/groups/${groupId}/invitations`),
+	const invitations = useCursorPage<Invitation>({
+		queryKey: ["invitations", groupId, "pending"],
+		fetchPage: pageFetcher<Invitation>(
+			`/api/v1/groups/${groupId}/invitations`,
+			{ status: "pending" },
+		),
+	});
+	const transferCandidates = useCursorPage<Member>({
+		queryKey: ["members", groupId, "transfer"],
+		fetchPage: pageFetcher<Member>(`/api/v1/groups/${groupId}/members`, {
+			include_owner: "false",
+		}),
+		enabled: transferring,
 	});
 
 	const refresh = async () => {
@@ -147,9 +159,7 @@ export function MembersPage() {
 	if (!current) return null;
 	const canInvite = current.role === "owner" || current.role === "admin";
 	const isOwner = current.role === "owner";
-	const pending =
-		invitations.data?.filter((invitation) => invitation.status === "pending") ??
-		[];
+	const pending = invitations.items;
 
 	async function submitInvite(event: React.FormEvent) {
 		event.preventDefault();
@@ -188,7 +198,7 @@ export function MembersPage() {
 			<section className={styles.section}>
 				<h2 className={styles.sectionTitle}>Integrantes activos</h2>
 				<div className={styles.list}>
-					{members.data?.map((member) => {
+					{members.items.map((member) => {
 						const isMe = member.user_id === me?.id;
 						const canRemove =
 							canInvite &&
@@ -254,6 +264,14 @@ export function MembersPage() {
 						);
 					})}
 				</div>
+				<CursorPagination
+					label="Paginación de integrantes"
+					canGoNext={members.canGoNext}
+					canGoPrevious={members.canGoPrevious}
+					isFetching={members.isFetching}
+					onNext={members.goNext}
+					onPrevious={members.goPrevious}
+				/>
 			</section>
 
 			{canInvite ? (
@@ -268,15 +286,14 @@ export function MembersPage() {
 						onSubmit={submitInvite}
 						style={{ marginTop: "1rem" }}
 					>
-						<div className={styles.inline}>
-							<div style={{ flex: "1 1 16rem" }}>
+						<div className={styles.inviteRow}>
+							<div className={styles.inviteField}>
 								<label className={styles.eyebrowInline} htmlFor="invite-email">
 									{t("groups.inviteEmail")}
 								</label>
 								<input
 									id="invite-email"
 									className={styles.select}
-									style={{ width: "100%", marginTop: "0.35rem" }}
 									type="email"
 									required
 									value={email}
@@ -284,7 +301,11 @@ export function MembersPage() {
 									placeholder="persona@correo.com"
 								/>
 							</div>
-							<Button type="submit" disabled={invite.isPending || !email}>
+							<Button
+								type="submit"
+								className={styles.inviteButton}
+								disabled={invite.isPending || !email}
+							>
 								<MailPlus size={16} />
 								{t("groups.invite")}
 							</Button>
@@ -333,6 +354,14 @@ export function MembersPage() {
 						))}
 					</div>
 				)}
+				<CursorPagination
+					label="Paginación de invitaciones pendientes"
+					canGoNext={invitations.canGoNext}
+					canGoPrevious={invitations.canGoPrevious}
+					isFetching={invitations.isFetching}
+					onNext={invitations.goNext}
+					onPrevious={invitations.goPrevious}
+				/>
 			</section>
 
 			<section className={`${styles.card} ${styles.dangerZone}`}>
@@ -374,33 +403,37 @@ export function MembersPage() {
 						Elige a la persona que será propietaria. Tú quedarás como admin.
 					</p>
 					<div className={styles.list}>
-						{members.data
-							?.filter((member) => member.role !== "owner")
-							.map((member) => (
-								<button
-									key={member.user_id}
-									type="button"
-									className={styles.row}
-									style={{ cursor: "pointer", textAlign: "left" }}
-									onClick={() => {
-										if (
-											window.confirm(
-												`¿Transferir la propiedad a ${member.display_name}?`,
-											)
+						{transferCandidates.items.map((member) => (
+							<button
+								key={member.user_id}
+								type="button"
+								className={styles.row}
+								style={{ cursor: "pointer", textAlign: "left" }}
+								onClick={() => {
+									if (
+										window.confirm(
+											`¿Transferir la propiedad a ${member.display_name}?`,
 										)
-											transfer.mutate(member.user_id);
-									}}
-								>
-									<span className={styles.rowMain}>
-										<span className={styles.rowTitle}>
-											{member.display_name}
-										</span>
-										<span className={styles.rowMeta}>{member.email}</span>
-									</span>
-									<Crown size={17} />
-								</button>
-							))}
+									)
+										transfer.mutate(member.user_id);
+								}}
+							>
+								<span className={styles.rowMain}>
+									<span className={styles.rowTitle}>{member.display_name}</span>
+									<span className={styles.rowMeta}>{member.email}</span>
+								</span>
+								<Crown size={17} />
+							</button>
+						))}
 					</div>
+					<CursorPagination
+						label="Paginación de candidatos a propietario"
+						canGoNext={transferCandidates.canGoNext}
+						canGoPrevious={transferCandidates.canGoPrevious}
+						isFetching={transferCandidates.isFetching}
+						onNext={transferCandidates.goNext}
+						onPrevious={transferCandidates.goPrevious}
+					/>
 				</Modal>
 			) : null}
 		</div>

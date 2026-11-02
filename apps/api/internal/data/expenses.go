@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	cestia "github.com/zchelalo/cestia/apps/api/internal/db/sqlc/cestia"
 )
 
@@ -68,6 +69,7 @@ func Summary(ctx context.Context, q Querier, scope ScopeFilter, from, to *time.T
 	if err != nil {
 		return s, err
 	}
+	maxPayer := decimal.Zero
 	for _, row := range payers {
 		payer := PayerTotal{
 			PaidBy: row.PaidBy, DisplayName: row.DisplayName, Amount: row.Amount,
@@ -76,8 +78,12 @@ func Summary(ctx context.Context, q Querier, scope ScopeFilter, from, to *time.T
 		if payer.PaidBy == nil {
 			s.UnidentifiedPaid = payer.Amount
 		}
+		if value, err := decimal.NewFromString(payer.Amount); err == nil && value.GreaterThan(maxPayer) {
+			maxPayer = value
+		}
 		s.ByPayer = append(s.ByPayer, payer)
 	}
+	s.MaxPayerAmount = maxPayer.String()
 	return s, nil
 }
 
@@ -89,17 +95,20 @@ func Purchases(ctx context.Context, q Querier, scope ScopeFilter, filter Purchas
 	var cursorID *uuid.UUID
 	if filter.Cursor != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(filter.Cursor)
-		if err == nil {
-			parts := strings.SplitN(string(raw), "|", 2)
-			if len(parts) == 2 {
-				parsed, parseErr := time.Parse(time.RFC3339Nano, parts[0])
-				parsedID, idErr := uuid.Parse(parts[1])
-				if parseErr == nil && idErr == nil {
-					cursorAt = &parsed
-					cursorID = &parsedID
-				}
-			}
+		if err != nil {
+			return nil, "", ErrInvalidCursor
 		}
+		parts := strings.SplitN(string(raw), "|", 2)
+		if len(parts) != 2 {
+			return nil, "", ErrInvalidCursor
+		}
+		parsed, parseErr := time.Parse(time.RFC3339Nano, parts[0])
+		parsedID, idErr := uuid.Parse(parts[1])
+		if parseErr != nil || idErr != nil {
+			return nil, "", ErrInvalidCursor
+		}
+		cursorAt = &parsed
+		cursorID = &parsedID
 	}
 	rows, err := q.Queries().ListPurchaseHistory(ctx, cestia.ListPurchaseHistoryParams{
 		PersonalOwnerID: scope.PersonalOwnerID, GroupID: scope.GroupID,
