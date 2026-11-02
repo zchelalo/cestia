@@ -13,17 +13,21 @@
 
 .input {
 	width: 100%;
-	min-height: 2.85rem;
+	height: var(--control-height);
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-sm);
 	background: var(--color-background);
 	color: var(--color-foreground);
-	padding: 0.65rem 0.8rem;
+	line-height: var(--control-line-height);
+	padding: 0 0.8rem;
 	transition: border-color var(--transition-fast);
 }
 
 textarea.input {
+	height: auto;
 	min-height: 6rem;
+	line-height: 1.5;
+	padding: 0.65rem 0.8rem;
 	resize: vertical;
 }
 

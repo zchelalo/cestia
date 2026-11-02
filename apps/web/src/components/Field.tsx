@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import {
 	cloneElement,
 	type InputHTMLAttributes,
@@ -11,13 +12,21 @@ import styles from "@/components/Field.module.css";
 
 type Common = {
 	label: string;
+	className?: string;
 	htmlFor?: string;
 	hint?: string;
 	error?: string;
 	children?: ReactNode;
 };
 
-export function Field({ label, htmlFor, hint, error, children }: Common) {
+export function Field({
+	label,
+	className,
+	htmlFor,
+	hint,
+	error,
+	children,
+}: Common) {
 	const generatedId = useId();
 	const childId =
 		htmlFor ??
@@ -30,7 +39,7 @@ export function Field({ label, htmlFor, hint, error, children }: Common) {
 			: children;
 
 	return (
-		<div className={styles.field}>
+		<div className={clsx(styles.field, className)}>
 			<label className={styles.label} htmlFor={childId}>
 				{label}
 			</label>
