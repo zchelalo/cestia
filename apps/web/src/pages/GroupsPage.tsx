@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Archive, Plus, Users } from "lucide-react";
 import { useState } from "react";
@@ -7,13 +7,16 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
+import { pageFetcher } from "@/shared/pages";
 import type { Group } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 const schema = z.object({
 	name: z
@@ -30,9 +33,9 @@ export function GroupsPage() {
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState("");
 	const queryClient = useQueryClient();
-	const groups = useQuery({
-		queryKey: ["groups"],
-		queryFn: () => apiData<Group[]>("/api/v1/groups"),
+	const groups = useCursorPage<Group>({
+		queryKey: ["groups", "page"],
+		fetchPage: pageFetcher<Group>("/api/v1/groups"),
 	});
 	const form = useForm<Form>({
 		resolver: zodResolver(schema),
@@ -62,7 +65,7 @@ export function GroupsPage() {
 	if (groups.isError)
 		return (
 			<ErrorState
-				message={groups.error.message}
+				message={groups.error?.message ?? "No se pudo cargar la lista."}
 				onRetry={() => groups.refetch()}
 			/>
 		);
@@ -80,7 +83,7 @@ export function GroupsPage() {
 					</Button>
 				}
 			/>
-			{groups.data?.length === 0 ? (
+			{groups.items.length === 0 ? (
 				<div className={styles.empty}>
 					<Users size={28} />
 					<br />
@@ -88,7 +91,7 @@ export function GroupsPage() {
 				</div>
 			) : (
 				<div className={styles.grid3}>
-					{groups.data?.map((group) => (
+					{groups.items.map((group) => (
 						<Link
 							key={group.id}
 							to="/groups/$groupId"
@@ -119,6 +122,15 @@ export function GroupsPage() {
 					))}
 				</div>
 			)}
+
+			<CursorPagination
+				label="Paginación de grupos"
+				canGoNext={groups.canGoNext}
+				canGoPrevious={groups.canGoPrevious}
+				isFetching={groups.isFetching}
+				onNext={groups.goNext}
+				onPrevious={groups.goPrevious}
+			/>
 
 			{creating ? (
 				<Modal title={t("groups.newGroup")} onClose={() => setCreating(false)}>

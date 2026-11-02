@@ -117,6 +117,33 @@
 	gap: var(--spacing-4);
 }
 
+.dashboardSection {
+	align-content: start;
+}
+
+.dashboardBody {
+	align-content: start;
+	display: grid;
+	gap: var(--spacing-3);
+}
+
+.compactRow {
+	height: 5rem;
+	min-height: 5rem;
+}
+
+.compactRow .rowMain {
+	gap: 0;
+	min-width: 0;
+}
+
+.compactRow .rowTitle,
+.compactRow .rowMeta {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .sectionHead {
 	display: flex;
 	justify-content: space-between;
@@ -150,6 +177,10 @@
 	min-width: 0;
 	display: grid;
 	gap: 2px;
+}
+
+.historyRow {
+	align-items: center;
 }
 
 .rowTitle {
@@ -257,20 +288,27 @@
 
 .payerRow {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
+	gap: var(--spacing-2);
+}
+
+.payerHead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
 	gap: var(--spacing-3);
-	align-items: center;
+	min-width: 0;
 }
 
 .payerName {
 	font-size: var(--font-size-sm);
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 
 .bar {
 	height: 0.35rem;
 	border-radius: var(--border-radius-full);
 	background: var(--color-surface);
-	margin-top: var(--spacing-2);
 	overflow: hidden;
 }
 
@@ -301,12 +339,13 @@
 }
 
 .select {
-	min-height: 2.65rem;
+	height: var(--control-height);
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-sm);
 	background: var(--color-background);
 	color: var(--color-foreground);
-	padding: 0.45rem 0.65rem;
+	line-height: var(--control-line-height);
+	padding: 0 0.65rem;
 }
 
 .empty {
@@ -317,7 +356,24 @@
 	text-align: center;
 }
 
+.actionsGrid {
+	min-width: 0;
+}
+
+.actionsGrid > a {
+	text-decoration: none;
+}
+
+.actionsGrid > * {
+	min-width: 0;
+}
+
 .itemPrice {
+	align-self: center;
+	display: grid;
+	flex-shrink: 0;
+	gap: var(--spacing-1);
+	justify-items: end;
 	text-align: right;
 	font-variant-numeric: tabular-nums;
 }
@@ -365,14 +421,18 @@
 }
 
 .toggleButton {
+	align-items: center;
+	display: inline-flex;
+	justify-content: center;
 	min-height: 2.2rem;
 	border: 0;
 	border-radius: var(--border-radius-full);
 	background: transparent;
 	color: var(--color-muted);
-	padding: 0.3rem 0.8rem;
+	padding: 0 0.8rem;
 	cursor: pointer;
 	font-size: var(--font-size-sm);
+	line-height: var(--control-line-height);
 }
 
 .toggleActive {
@@ -394,6 +454,36 @@
 	align-items: center;
 	gap: var(--spacing-2);
 	flex-wrap: wrap;
+}
+
+.inline > a {
+	text-decoration: none;
+}
+
+.actions > a {
+	text-decoration: none;
+}
+
+.inviteRow {
+	align-items: flex-end;
+	display: flex;
+	gap: var(--spacing-3);
+}
+
+.inviteField {
+	display: grid;
+	flex: 1 1 16rem;
+	gap: var(--spacing-1);
+	min-width: 0;
+}
+
+.inviteField input {
+	width: 100%;
+}
+
+.inviteButton {
+	flex: 0 0 auto;
+	height: var(--control-height);
 }
 
 @media (max-width: 1000px) {
@@ -423,15 +513,71 @@
 	.actions > * {
 		flex: 1;
 	}
+	.actionsGrid {
+		display: grid;
+		gap: var(--spacing-2);
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.actionsGrid > * {
+		min-width: 0;
+	}
+	.actionsGrid > a,
+	.actionsGrid > button {
+		display: flex;
+	}
+	.actionsGrid > a > button,
+	.actionsGrid > button {
+		font-size: var(--font-size-sm);
+		gap: var(--spacing-1);
+		min-width: 0;
+		padding: 0 var(--spacing-2);
+		white-space: nowrap;
+		width: 100%;
+	}
+	.actionsGrid > .groupArchiveAction {
+		grid-column: 1 / -1;
+	}
 	.row {
 		align-items: flex-start;
+	}
+	.historyRow {
+		align-items: stretch;
+		flex-direction: column;
+		gap: var(--spacing-3);
+	}
+	.historyRow .itemPrice {
+		align-self: flex-start;
+		justify-items: start;
+		text-align: left;
 	}
 	.rowActions {
 		flex-direction: column;
 		align-items: stretch;
 	}
+	.itemRow {
+		align-items: stretch;
+		flex-direction: column;
+		gap: var(--spacing-3);
+		justify-content: flex-start;
+	}
+	.itemRowActions {
+		align-items: center;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: var(--spacing-2);
+	}
+	.itemRowActions > button {
+		flex: 0 1 auto;
+	}
 	.filterItem {
 		flex: 1 1 100%;
+	}
+	.inviteRow {
+		align-items: stretch;
+		flex-direction: column;
+	}
+	.inviteRow > button {
+		width: 100%;
 	}
 	.select {
 		width: 100%;

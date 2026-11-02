@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import type { ReactNode } from "react";
 import styles from "@/pages/Page.module.css";
 
@@ -6,11 +7,13 @@ export function PageHeader({
 	title,
 	subtitle,
 	actions,
+	actionsGrid = false,
 }: {
 	eyebrow?: string;
 	title: string;
 	subtitle?: string;
 	actions?: ReactNode;
+	actionsGrid?: boolean;
 }) {
 	return (
 		<header className={styles.header}>
@@ -19,7 +22,13 @@ export function PageHeader({
 				<h1 className={styles.title}>{title}</h1>
 				{subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
 			</div>
-			{actions ? <div className={styles.actions}>{actions}</div> : null}
+			{actions ? (
+				<div
+					className={clsx(styles.actions, actionsGrid && styles.actionsGrid)}
+				>
+					{actions}
+				</div>
+			) : null}
 		</header>
 	);
 }

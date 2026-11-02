@@ -1,16 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CursorPagination } from "@/components/CursorPagination";
+import { InputDate } from "@/components/molecules/input-date";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import { SummaryCard } from "@/components/SummaryCard";
 import styles from "@/pages/Page.module.css";
 import { useGroupSelectOptions } from "@/shared/catalogs";
-import { apiData } from "@/shared/http";
+import { apiData, apiPage } from "@/shared/http";
 import { formatMoney } from "@/shared/money";
-import type { Group, ListExpense, Summary } from "@/shared/types";
+import type { Group, ListExpense, PayerTotal, Summary } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 export function ExpensesPage() {
 	const { t } = useTranslation();
@@ -38,16 +41,39 @@ export function ExpensesPage() {
 		queryFn: () =>
 			apiData<Summary>(`/api/v1/expenses/summary?${query.toString()}`),
 	});
-	const byList = useQuery({
+	const byList = useCursorPage<ListExpense>({
 		queryKey: ["expenses-by-list", scope, from, to],
-		queryFn: () =>
-			apiData<ListExpense[]>(`/api/v1/expenses/by-list?${query.toString()}`),
+		fetchPage: (input) => {
+			const search = new URLSearchParams({ include_archived: "true" });
+			if (scope) search.set("group_id", scope);
+			if (from) search.set("from", new Date(`${from}T00:00:00`).toISOString());
+			if (to) search.set("to", new Date(`${to}T00:00:00`).toISOString());
+			search.set("limit", String(input.limit));
+			if (input.cursor) search.set("cursor", input.cursor);
+			return apiPage<ListExpense[]>(
+				`/api/v1/expenses/by-list?${search.toString()}`,
+				{ signal: input.signal },
+			);
+		},
+	});
+	const payers = useCursorPage<PayerTotal>({
+		queryKey: ["expenses-by-payer", scope, from, to],
+		fetchPage: (input) => {
+			const search = new URLSearchParams({ include_archived: "true" });
+			if (scope) search.set("group_id", scope);
+			if (from) search.set("from", new Date(`${from}T00:00:00`).toISOString());
+			if (to) search.set("to", new Date(`${to}T00:00:00`).toISOString());
+			search.set("limit", String(input.limit));
+			if (input.cursor) search.set("cursor", input.cursor);
+			return apiPage<PayerTotal[]>(
+				`/api/v1/expenses/by-payer?${search.toString()}`,
+				{ signal: input.signal },
+			);
+		},
 	});
 
-	const payerRows = summary.data?.by_payer ?? [];
-	const maxPayer = useMemo(() => {
-		return Math.max(...payerRows.map((payer) => Number(payer.amount)), 1);
-	}, [payerRows]);
+	const payerRows = payers.items;
+	const maxPayer = Math.max(Number(summary.data?.max_payer_amount ?? 0), 1);
 
 	if (summary.isLoading) return <LoadingState />;
 	if (summary.isError)
@@ -88,24 +114,22 @@ export function ExpensesPage() {
 							placeholder={t("expenses.personal")}
 						/>
 					</div>
-					<label className={styles.filterItem}>
-						{t("expenses.from")}
-						<input
-							className={styles.select}
-							type="date"
+					<div className={styles.filterItem}>
+						<span>{t("expenses.from")}</span>
+						<InputDate
+							aria-label={t("expenses.from")}
 							value={from}
-							onChange={(event) => setFrom(event.target.value)}
+							onChange={setFrom}
 						/>
-					</label>
-					<label className={styles.filterItem}>
-						{t("expenses.to")}
-						<input
-							className={styles.select}
-							type="date"
+					</div>
+					<div className={styles.filterItem}>
+						<span>{t("expenses.to")}</span>
+						<InputDate
+							aria-label={t("expenses.to")}
 							value={to}
-							onChange={(event) => setTo(event.target.value)}
+							onChange={setTo}
 						/>
-					</label>
+					</div>
 					{from || to ? (
 						<button
 							type="button"
@@ -153,13 +177,13 @@ export function ExpensesPage() {
 					Los totales reales incluyen únicamente compras activas. Las listas
 					archivadas conservan su historial.
 				</p>
-				{byList.data?.length === 0 ? (
+				{byList.items.length === 0 ? (
 					<div className={styles.empty} style={{ marginTop: "1rem" }}>
 						{t("common.noResults")}
 					</div>
 				) : (
 					<div className={styles.list} style={{ marginTop: "1rem" }}>
-						{byList.data?.map((list) => (
+						{byList.items.map((list) => (
 							<div key={list.list_id} className={styles.row}>
 								<span className={styles.rowMain}>
 									<span className={styles.rowTitle}>
@@ -181,6 +205,14 @@ export function ExpensesPage() {
 						))}
 					</div>
 				)}
+				<CursorPagination
+					label="Paginación de gasto por lista"
+					canGoNext={byList.canGoNext}
+					canGoPrevious={byList.canGoPrevious}
+					isFetching={byList.isFetching}
+					onNext={byList.goNext}
+					onPrevious={byList.goPrevious}
+				/>
 			</section>
 
 			<section className={styles.grid2}>
@@ -203,28 +235,36 @@ export function ExpensesPage() {
 									key={payer.paid_by ?? "unknown"}
 									className={styles.payerRow}
 								>
-									<div>
-										<div className={styles.payerName}>
+									<div className={styles.payerHead}>
+										<span className={styles.payerName}>
 											{payer.paid_by
 												? payer.display_name
 												: t("expenses.noPayer")}
-										</div>
-										<div className={styles.bar}>
-											<div
-												className={styles.barFill}
-												style={{
-													width: `${Math.max(3, (Number(payer.amount) / maxPayer) * 100)}%`,
-												}}
-											/>
-										</div>
+										</span>
+										<span className={styles.payerAmount}>
+											{formatMoney(payer.amount)}
+										</span>
 									</div>
-									<span className={styles.payerAmount}>
-										{formatMoney(payer.amount)}
-									</span>
+									<div className={styles.bar}>
+										<div
+											className={styles.barFill}
+											style={{
+												width: `${Math.max(3, (Number(payer.amount) / maxPayer) * 100)}%`,
+											}}
+										/>
+									</div>
 								</div>
 							))}
 						</div>
 					)}
+					<CursorPagination
+						label="Paginación de gasto por pagador"
+						canGoNext={payers.canGoNext}
+						canGoPrevious={payers.canGoPrevious}
+						isFetching={payers.isFetching}
+						onNext={payers.goNext}
+						onPrevious={payers.goPrevious}
+					/>
 				</div>
 				<div className={styles.card}>
 					<h2 className={styles.cardTitle}>Lectura del resumen</h2>

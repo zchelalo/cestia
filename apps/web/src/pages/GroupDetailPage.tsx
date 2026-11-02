@@ -3,12 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
 	Archive,
+	ArrowLeft,
 	ArrowRight,
 	Pencil,
 	Plus,
 	RotateCcw,
-	Settings2,
 	Users,
+	Wallet,
 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { PageHeader } from "@/components/PageHeader";
@@ -24,7 +26,9 @@ import { SummaryCard } from "@/components/SummaryCard";
 import styles from "@/pages/Page.module.css";
 import { apiData } from "@/shared/http";
 import { formatMoney } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import type { Activity, Group, ShoppingList, Summary } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 const groupSchema = z.object({
 	name: z.string().trim().min(1, "Escribe un nombre.").max(120),
@@ -50,12 +54,12 @@ export function GroupDetailPage() {
 		queryKey: ["group", groupId],
 		queryFn: () => apiData<Group>(`/api/v1/groups/${groupId}`),
 	});
-	const lists = useQuery({
-		queryKey: ["lists", "group", groupId, true],
-		queryFn: () =>
-			apiData<ShoppingList[]>(
-				`/api/v1/shopping-lists?group_id=${groupId}&include_archived=true`,
-			),
+	const lists = useCursorPage<ShoppingList>({
+		queryKey: ["lists", "group", groupId],
+		fetchPage: pageFetcher<ShoppingList>("/api/v1/shopping-lists", {
+			group_id: groupId,
+			include_archived: "true",
+		}),
 		refetchInterval: 30_000,
 	});
 	const summary = useQuery({
@@ -66,10 +70,11 @@ export function GroupDetailPage() {
 			),
 		refetchInterval: 30_000,
 	});
-	const activity = useQuery({
+	const activity = useCursorPage<Activity>({
 		queryKey: ["activity", "group", groupId],
-		queryFn: () =>
-			apiData<Activity[]>(`/api/v1/activity?group_id=${groupId}&limit=10`),
+		fetchPage: pageFetcher<Activity>("/api/v1/activity", {
+			group_id: groupId,
+		}),
 		refetchInterval: 30_000,
 	});
 	const groupForm = useForm<GroupForm>({
@@ -163,22 +168,24 @@ export function GroupDetailPage() {
 				eyebrow={`${t("groups.group")} · ${t(`groups.${data.role}`)}`}
 				title={data.name}
 				subtitle={data.description || t("groups.subtitle")}
+				actionsGrid={canConfigure}
 				actions={
 					<>
 						<Link to="/groups/$groupId/members" params={{ groupId }}>
-							<Button variant="secondary">
+							<Button variant="surface">
 								<Users size={16} />
 								{t("groups.members")}
 							</Button>
 						</Link>
 						{canConfigure ? (
 							<>
-								<Button variant="quiet" onClick={() => setEditing(true)}>
+								<Button variant="surface" onClick={() => setEditing(true)}>
 									<Pencil size={16} />
 									{t("common.edit")}
 								</Button>
 								<Button
-									variant="quiet"
+									variant="surface"
+									className={styles.groupArchiveAction}
 									onClick={() => archiveGroup.mutate(!data.archived_at)}
 									disabled={archiveGroup.isPending}
 								>
@@ -236,16 +243,16 @@ export function GroupDetailPage() {
 						</Button>
 					) : null}
 				</div>
-				{lists.data?.length === 0 ? (
+				{lists.items.length === 0 ? (
 					<EmptyState>{t("common.noResults")}</EmptyState>
 				) : (
-					<div className={styles.list}>
-						{lists.data?.map((list) => (
+					<div className={`${styles.list} ${styles.dashboardBody}`}>
+						{lists.items.map((list) => (
 							<Link
 								key={list.id}
 								to="/lists/$listId"
 								params={{ listId: list.id }}
-								className={styles.row}
+								className={`${styles.row} ${styles.compactRow}`}
 								style={{ textDecoration: "none", color: "inherit" }}
 							>
 								<span className={styles.rowMain}>
@@ -267,6 +274,14 @@ export function GroupDetailPage() {
 						))}
 					</div>
 				)}
+				<CursorPagination
+					label="Paginación de listas del grupo"
+					canGoNext={lists.canGoNext}
+					canGoPrevious={lists.canGoPrevious}
+					isFetching={lists.isFetching}
+					onNext={lists.goNext}
+					onPrevious={lists.goPrevious}
+				/>
 			</section>
 
 			<section className={styles.section}>
@@ -274,8 +289,16 @@ export function GroupDetailPage() {
 					<h2 className={styles.sectionTitle}>{t("history.activity")}</h2>
 				</div>
 				<div className={styles.card}>
-					<ActivityTimeline events={activity.data ?? []} />
+					<ActivityTimeline events={activity.items} />
 				</div>
+				<CursorPagination
+					label="Paginación de actividad del grupo"
+					canGoNext={activity.canGoNext}
+					canGoPrevious={activity.canGoPrevious}
+					isFetching={activity.isFetching}
+					onNext={activity.goNext}
+					onPrevious={activity.goPrevious}
+				/>
 			</section>
 
 			{editing ? (
@@ -342,15 +365,16 @@ export function GroupDetailPage() {
 
 			<div className={styles.inline}>
 				<Link to="/expenses" search={{ group_id: groupId } as never}>
-					<Button variant="quiet">
-						<Settings2 size={15} />
+					<Button variant="primarySoft">
+						<Wallet size={16} />
 						{t("expenses.title")}
 					</Button>
 				</Link>
 				<Button
-					variant="quiet"
+					variant="secondary"
 					onClick={() => void navigate({ to: "/groups" })}
 				>
+					<ArrowLeft size={16} />
 					{t("common.back")}
 				</Button>
 			</div>

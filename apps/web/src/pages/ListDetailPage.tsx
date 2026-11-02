@@ -7,6 +7,7 @@ import {
 	Check,
 	Pencil,
 	Plus,
+	ReceiptText,
 	RotateCcw,
 	ShoppingCart,
 	Trash2,
@@ -16,8 +17,10 @@ import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
+import { DateTimeInput } from "@/components/molecules/input-date";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
@@ -32,6 +35,7 @@ import {
 	localDateTimeInput,
 	unitLabels,
 } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import { useSession } from "@/shared/session";
 import type {
 	Purchase,
@@ -39,6 +43,7 @@ import type {
 	ShoppingList,
 	Summary,
 } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 import { useLocalSelectOptions } from "@/shared/use-local-select-options";
 
 const itemSchema = z.object({
@@ -105,10 +110,12 @@ export function ListDetailPage() {
 		queryFn: () => apiData<ShoppingList>(`/api/v1/shopping-lists/${listId}`),
 		refetchInterval: (query) => (query.state.data?.group_id ? 15_000 : false),
 	});
-	const items = useQuery({
-		queryKey: ["items", listId],
-		queryFn: () =>
-			apiData<ShoppingItem[]>(`/api/v1/shopping-lists/${listId}/items`),
+	const items = useCursorPage<ShoppingItem>({
+		queryKey: ["items", listId, filter],
+		fetchPage: pageFetcher<ShoppingItem>(
+			`/api/v1/shopping-lists/${listId}/items`,
+			{ filter },
+		),
 		refetchInterval: list.data?.group_id ? 15_000 : false,
 	});
 	const summary = useQuery({
@@ -140,6 +147,7 @@ export function ListDetailPage() {
 		await queryClient.invalidateQueries({ queryKey: ["summary"] });
 		await queryClient.invalidateQueries({ queryKey: ["lists"] });
 		await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+		await queryClient.invalidateQueries({ queryKey: ["purchases"] });
 		await queryClient.invalidateQueries({ queryKey: ["history"] });
 		await queryClient.invalidateQueries({ queryKey: ["activity"] });
 	};
@@ -311,6 +319,7 @@ export function ListDetailPage() {
 	const memberCatalog = useGroupMemberSelectOptions(
 		list.data?.group_id,
 		staticMembers,
+		me?.id,
 	);
 	const memberLabel = (value: string, fallback?: string | null) =>
 		memberCatalog.labelFor(value) ??
@@ -336,13 +345,7 @@ export function ListDetailPage() {
 	if (!current) return null;
 	const canManage = current.role === "owner" || current.role === "admin";
 	const writable = !current.archived_at;
-	const visibleItems = (items.data ?? []).filter((item) =>
-		filter === "all"
-			? true
-			: filter === "pending"
-				? !item.purchase
-				: !!item.purchase,
-	);
+	const visibleItems = items.items;
 
 	function openItem(item?: ShoppingItem) {
 		setMessage("");
@@ -353,7 +356,7 @@ export function ListDetailPage() {
 				quantity: item.quantity,
 				unit: item.unit as ItemForm["unit"],
 				estimated_unit_price: item.estimated_unit_price ?? "",
-				assigned_to: item.assigned_to ?? "",
+				assigned_to: item.assigned_to ?? (isGroup ? "" : (me?.id ?? "")),
 				notes: item.notes,
 			});
 		} else {
@@ -363,7 +366,7 @@ export function ListDetailPage() {
 				quantity: "1",
 				unit: "unit",
 				estimated_unit_price: "",
-				assigned_to: "",
+				assigned_to: isGroup ? "" : (me?.id ?? ""),
 				notes: "",
 			});
 		}
@@ -413,25 +416,26 @@ export function ListDetailPage() {
 				eyebrow={current.group_id ? t("lists.group") : t("lists.personal")}
 				title={current.name}
 				subtitle={current.description || t("lists.subtitle")}
+				actionsGrid
 				actions={
 					<>
 						<Link
 							to={current.group_id ? "/groups/$groupId" : "/personal"}
 							params={current.group_id ? { groupId: current.group_id } : {}}
 						>
-							<Button variant="secondary">
+							<Button variant="surface">
 								<ArrowLeft size={16} />
 								{t("common.back")}
 							</Button>
 						</Link>
 						{canManage ? (
 							<>
-								<Button variant="quiet" onClick={() => openListEdit(current)}>
+								<Button variant="surface" onClick={() => openListEdit(current)}>
 									<Pencil size={16} />
 									{t("common.edit")}
 								</Button>
 								<Button
-									variant="quiet"
+									variant="surface"
 									onClick={() => archiveList.mutate(!current.archived_at)}
 									disabled={archiveList.isPending}
 								>
@@ -512,7 +516,7 @@ export function ListDetailPage() {
 						const canCorrect =
 							purchase && (canManage || purchase.recorded_by === me?.id);
 						return (
-							<div key={item.id} className={styles.row}>
+							<div key={item.id} className={`${styles.row} ${styles.itemRow}`}>
 								<span className={styles.rowMain}>
 									<span className={styles.inline}>
 										<span className={styles.rowTitle}>{item.name}</span>
@@ -536,25 +540,38 @@ export function ListDetailPage() {
 										{item.estimated_unit_price
 											? ` · ${formatMoney(item.estimated_unit_price)} estimado`
 											: ""}
-										{item.assigned_to_name
+										{isGroup && item.assigned_to_name
 											? ` · ${item.assigned_to_name}`
-											: item.assigned_to
+											: isGroup && item.assigned_to
 												? ` · ${memberCatalog.labelFor(item.assigned_to) ?? "Asignado"}`
 												: ""}
 									</span>
 									{purchase ? (
-										<span className={styles.rowMeta}>
-											{formatDate(purchase.purchased_at)} · compró{" "}
-											{purchase.purchased_by_name} · pagó{" "}
-											{purchase.paid_by_name ?? t("lists.unidentified")} ·{" "}
-											{formatMoney(purchase.total_amount)}
-										</span>
+										<>
+											<span className={styles.rowMeta}>
+												Compra {formatDate(purchase.purchased_at)} ·{" "}
+												{formatMoney(purchase.total_amount)}
+											</span>
+											<span className={styles.rowMeta}>
+												Compró {purchase.purchased_by_name}
+											</span>
+											<span className={styles.rowMeta}>
+												Pagó {purchase.paid_by_name ?? t("lists.unidentified")}
+											</span>
+											{purchase.recorded_by_name ? (
+												<span className={styles.rowMeta}>
+													Registró {purchase.recorded_by_name}
+												</span>
+											) : null}
+										</>
 									) : null}
 									{item.notes ? (
 										<span className={styles.rowMeta}>{item.notes}</span>
 									) : null}
 								</span>
-								<span className={styles.rowActions}>
+								<span
+									className={`${styles.rowActions} ${styles.itemRowActions}`}
+								>
 									{!purchase && writable ? (
 										<>
 											<Button
@@ -599,20 +616,23 @@ export function ListDetailPage() {
 												variant="quiet"
 												onClick={() => openItem(item)}
 											>
+												<Pencil size={14} />
 												{t("common.edit")}
 											</Button>
 											<Button
 												small
-												variant="quiet"
+												variant="primarySoft"
 												onClick={() => openCorrection(purchase)}
 											>
+												<ReceiptText size={14} />
 												{t("lists.correctPurchase")}
 											</Button>
 											<Button
 												small
-												variant="quiet"
+												variant="dangerSoft"
 												onClick={() => openReverse(purchase)}
 											>
+												<RotateCcw size={14} />
 												{t("lists.reversePurchase")}
 											</Button>
 										</>
@@ -623,6 +643,7 @@ export function ListDetailPage() {
 											variant="quiet"
 											onClick={() => openItem(item)}
 										>
+											<Pencil size={14} />
 											{t("common.edit")}
 										</Button>
 									) : null}
@@ -632,6 +653,14 @@ export function ListDetailPage() {
 					})}
 				</div>
 			)}
+			<CursorPagination
+				label="Paginación de artículos"
+				canGoNext={items.canGoNext}
+				canGoPrevious={items.canGoPrevious}
+				isFetching={items.isFetching}
+				onNext={items.goNext}
+				onPrevious={items.goPrevious}
+			/>
 
 			{dialog?.type === "item" ? (
 				<Modal
@@ -694,50 +723,53 @@ export function ListDetailPage() {
 									<Field
 										label={t("lists.estimatedUnitPrice")}
 										hint="MXN · opcional"
+										className={isGroup ? undefined : styles.full}
 									>
 										<Input
 											inputMode="decimal"
 											{...itemForm.register("estimated_unit_price")}
 										/>
 									</Field>
-									<Field
-										label={t("lists.assignedTo")}
-										htmlFor="item-assigned-to"
-									>
-										<Controller
-											name="assigned_to"
-											control={itemForm.control}
-											render={({ field }) => (
-												<Select
-													id="item-assigned-to"
-													aria-label={t("lists.assignedTo")}
-													remote
-													selectedLabel={memberLabel(
-														field.value,
-														dialog?.item?.assigned_to_name,
-													)}
-													options={[
-														{
-															value: "",
-															label: t("lists.unassigned"),
-															local: true,
-														},
-														...memberCatalog.options,
-													]}
-													value={field.value}
-													onChange={field.onChange}
-													onBlur={field.onBlur}
-													searchValue={memberCatalog.searchInput}
-													onSearchChange={memberCatalog.setSearchInput}
-													isLoading={memberCatalog.isLoading}
-													isLoadingMore={memberCatalog.isFetchingNextPage}
-													hasMore={memberCatalog.hasMore}
-													onLoadMore={memberCatalog.loadMore}
-													placeholder={t("lists.unassigned")}
-												/>
-											)}
-										/>
-									</Field>
+									{isGroup ? (
+										<Field
+											label={t("lists.assignedTo")}
+											htmlFor="item-assigned-to"
+										>
+											<Controller
+												name="assigned_to"
+												control={itemForm.control}
+												render={({ field }) => (
+													<Select
+														id="item-assigned-to"
+														aria-label={t("lists.assignedTo")}
+														remote
+														selectedLabel={memberLabel(
+															field.value,
+															dialog?.item?.assigned_to_name,
+														)}
+														options={[
+															{
+																value: "",
+																label: t("lists.unassigned"),
+																local: true,
+															},
+															...memberCatalog.options,
+														]}
+														value={field.value}
+														onChange={field.onChange}
+														onBlur={field.onBlur}
+														searchValue={memberCatalog.searchInput}
+														onSearchChange={memberCatalog.setSearchInput}
+														isLoading={memberCatalog.isLoading}
+														isLoadingMore={memberCatalog.isFetchingNextPage}
+														hasMore={memberCatalog.hasMore}
+														onLoadMore={memberCatalog.loadMore}
+														placeholder={t("lists.unassigned")}
+													/>
+												)}
+											/>
+										</Field>
+									) : null}
 								</div>
 								<Field
 									label={`${t("common.description")} (${t("common.optional")})`}
@@ -785,11 +817,21 @@ export function ListDetailPage() {
 							</Field>
 							<Field
 								label={t("lists.purchaseDate")}
+								htmlFor="purchase-date"
 								error={purchaseForm.formState.errors.purchased_at?.message}
 							>
-								<Input
-									type="datetime-local"
-									{...purchaseForm.register("purchased_at")}
+								<Controller
+									name="purchased_at"
+									control={purchaseForm.control}
+									render={({ field }) => (
+										<DateTimeInput
+											id="purchase-date"
+											aria-label={t("lists.purchaseDate")}
+											value={field.value}
+											onChange={field.onChange}
+											onBlur={field.onBlur}
+										/>
+									)}
 								/>
 							</Field>
 							<Field
@@ -891,10 +933,23 @@ export function ListDetailPage() {
 									{...correctionForm.register("actual_unit_price")}
 								/>
 							</Field>
-							<Field label={t("lists.purchaseDate")}>
-								<Input
-									type="datetime-local"
-									{...correctionForm.register("purchased_at")}
+							<Field
+								label={t("lists.purchaseDate")}
+								htmlFor="correction-date"
+								error={correctionForm.formState.errors.purchased_at?.message}
+							>
+								<Controller
+									name="purchased_at"
+									control={correctionForm.control}
+									render={({ field }) => (
+										<DateTimeInput
+											id="correction-date"
+											aria-label={t("lists.purchaseDate")}
+											value={field.value}
+											onChange={field.onChange}
+											onBlur={field.onBlur}
+										/>
+									)}
 								/>
 							</Field>
 							<Field

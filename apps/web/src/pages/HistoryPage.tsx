@@ -1,9 +1,10 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
-import { Button } from "@/components/Button";
+import { CursorPagination } from "@/components/CursorPagination";
+import { InputDate } from "@/components/molecules/input-date";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/States";
@@ -11,7 +12,9 @@ import styles from "@/pages/Page.module.css";
 import { useGroupSelectOptions } from "@/shared/catalogs";
 import { apiData, apiPage } from "@/shared/http";
 import { formatDate, formatMoney, unitLabels } from "@/shared/money";
+import { pageFetcher } from "@/shared/pages";
 import type { Activity, Group, Purchase } from "@/shared/types";
+import { useCursorPage } from "@/shared/use-cursor-page";
 
 export function HistoryPage() {
 	const { t } = useTranslation();
@@ -31,29 +34,29 @@ export function HistoryPage() {
 	});
 	const scopeLabel = groupCatalog.labelFor(scope) ?? selectedGroup.data?.name;
 
-	const purchases = useInfiniteQuery({
+	const purchases = useCursorPage<Purchase>({
 		queryKey: ["history", "purchases", scope, from, to],
-		initialPageParam: "",
-		queryFn: ({ pageParam }) => {
-			const query = new URLSearchParams({ limit: "30" });
+		fetchPage: (input) => {
+			const query = new URLSearchParams({ limit: String(input.limit) });
 			if (scope) query.set("group_id", scope);
 			if (from) query.set("from", new Date(`${from}T00:00:00`).toISOString());
 			if (to) query.set("to", new Date(`${to}T00:00:00`).toISOString());
-			if (pageParam) query.set("cursor", pageParam);
-			return apiPage<Purchase[]>(`/api/v1/purchases?${query.toString()}`);
+			if (input.cursor) query.set("cursor", input.cursor);
+			return apiPage<Purchase[]>(`/api/v1/purchases?${query.toString()}`, {
+				signal: input.signal,
+			});
 		},
-		getNextPageParam: (page) => page.meta?.next_cursor || undefined,
 	});
-	const activity = useQuery({
+	const activity = useCursorPage<Activity>({
 		queryKey: ["history", "activity", scope],
-		queryFn: () =>
-			apiData<Activity[]>(
-				`/api/v1/activity?${scope ? `group_id=${scope}&` : ""}limit=50`,
-			),
+		fetchPage: pageFetcher<Activity>(
+			"/api/v1/activity",
+			scope ? { group_id: scope } : {},
+		),
 		enabled: tab === "activity",
 	});
 
-	const allPurchases = purchases.data?.pages.flatMap((page) => page.data) ?? [];
+	const allPurchases = purchases.items;
 
 	return (
 		<div className={styles.page}>
@@ -83,24 +86,22 @@ export function HistoryPage() {
 							placeholder={t("expenses.personal")}
 						/>
 					</div>
-					<label className={styles.filterItem}>
-						{t("expenses.from")}
-						<input
-							className={styles.select}
-							type="date"
+					<div className={styles.filterItem}>
+						<span>{t("expenses.from")}</span>
+						<InputDate
+							aria-label={t("expenses.from")}
 							value={from}
-							onChange={(event) => setFrom(event.target.value)}
+							onChange={setFrom}
 						/>
-					</label>
-					<label className={styles.filterItem}>
-						{t("expenses.to")}
-						<input
-							className={styles.select}
-							type="date"
+					</div>
+					<div className={styles.filterItem}>
+						<span>{t("expenses.to")}</span>
+						<InputDate
+							aria-label={t("expenses.to")}
 							value={to}
-							onChange={(event) => setTo(event.target.value)}
+							onChange={setTo}
 						/>
-					</label>
+					</div>
 				</div>
 			</div>
 
@@ -126,7 +127,9 @@ export function HistoryPage() {
 					<LoadingState />
 				) : purchases.isError ? (
 					<ErrorState
-						message={purchases.error.message}
+						message={
+							purchases.error?.message ?? "No se pudo cargar el historial."
+						}
 						onRetry={() => purchases.refetch()}
 					/>
 				) : allPurchases.length === 0 ? (
@@ -135,7 +138,10 @@ export function HistoryPage() {
 					<>
 						<div className={styles.list}>
 							{allPurchases.map((purchase) => (
-								<div key={purchase.id} className={styles.row}>
+								<div
+									key={purchase.id}
+									className={`${styles.row} ${styles.historyRow}`}
+								>
 									<span className={styles.rowMain}>
 										<span className={styles.inline}>
 											<span className={styles.rowTitle}>
@@ -161,9 +167,13 @@ export function HistoryPage() {
 											{formatDate(purchase.purchased_at, true)}
 										</span>
 										<span className={styles.rowMeta}>
-											Compró {purchase.purchased_by_name} · pagó{" "}
-											{purchase.paid_by_name ?? t("lists.unidentified")} ·
-											registró {purchase.recorded_by_name}
+											<span>Compró {purchase.purchased_by_name}</span>
+											{" · "}
+											<span>
+												Pagó {purchase.paid_by_name ?? t("lists.unidentified")}
+											</span>
+											{" · "}
+											<span>Registró {purchase.recorded_by_name}</span>
 										</span>
 										{purchase.reversal_reason ? (
 											<span className={styles.rowMeta}>
@@ -184,28 +194,37 @@ export function HistoryPage() {
 								</div>
 							))}
 						</div>
-						{purchases.hasNextPage ? (
-							<Button
-								variant="secondary"
-								onClick={() => purchases.fetchNextPage()}
-								disabled={purchases.isFetchingNextPage}
-							>
-								Cargar más
-							</Button>
-						) : null}
+						<CursorPagination
+							label="Paginación del historial de compras"
+							canGoNext={purchases.canGoNext}
+							canGoPrevious={purchases.canGoPrevious}
+							isFetching={purchases.isFetching}
+							onNext={purchases.goNext}
+							onPrevious={purchases.goPrevious}
+						/>
 					</>
 				)
 			) : activity.isLoading ? (
 				<LoadingState />
 			) : activity.isError ? (
 				<ErrorState
-					message={activity.error.message}
+					message={activity.error?.message ?? "No se pudo cargar la actividad."}
 					onRetry={() => activity.refetch()}
 				/>
 			) : (
-				<div className={styles.card}>
-					<ActivityTimeline events={activity.data ?? []} />
-				</div>
+				<>
+					<div className={styles.card}>
+						<ActivityTimeline events={activity.items} />
+					</div>
+					<CursorPagination
+						label="Paginación de actividad"
+						canGoNext={activity.canGoNext}
+						canGoPrevious={activity.canGoPrevious}
+						isFetching={activity.isFetching}
+						onNext={activity.goNext}
+						onPrevious={activity.goPrevious}
+					/>
+				</>
 			)}
 		</div>
 	);
