@@ -252,9 +252,21 @@ func (s *Service) CreateItem(ctx context.Context, userID, listID uuid.UUID, in I
 		if err != nil {
 			return err
 		}
-		if err := s.validateAssignee(ctx, q, list, userID, in.AssignedTo); err != nil {
+		assignee := in.AssignedTo
+		if list.GroupID == nil {
+			owner := userID
+			if list.PersonalOwnerID != nil {
+				owner = *list.PersonalOwnerID
+			}
+			if assignee != nil && *assignee != owner {
+				return apperr.Unprocessable("invalid_assignee", "Solo puedes asignarte artículos a ti mismo.")
+			}
+			assignee = &owner
+		}
+		if err := s.validateAssignee(ctx, q, list, userID, assignee); err != nil {
 			return err
 		}
+		item.AssignedTo = assignee
 		if err := data.CreateItem(ctx, q, item); err != nil {
 			return err
 		}
@@ -313,6 +325,15 @@ func (s *Service) UpdateItem(ctx context.Context, userID, itemID uuid.UUID, in I
 			}
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
+		}
+		// Personal items are implicitly assigned to their owner while pending.
+		// Purchased items keep their historical assignee untouched.
+		if purchase.ID == uuid.Nil && list.GroupID == nil && in.AssignedTo == nil {
+			owner := userID
+			if list.PersonalOwnerID != nil {
+				owner = *list.PersonalOwnerID
+			}
+			in.AssignedTo = &owner
 		}
 		if err := s.validateAssignee(ctx, q, list, userID, in.AssignedTo); err != nil {
 			return err

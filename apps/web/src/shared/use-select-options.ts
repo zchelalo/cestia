@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SelectOption } from "@/components/molecules/select/types";
 
 export type PaginatedSelectPage<T> = {
@@ -27,6 +27,15 @@ export function usePaginatedSelect<T>({
 }) {
 	const [searchInput, setSearchInput] = useState("");
 	const [search, setSearch] = useState("");
+	const signature = JSON.stringify(queryKey);
+	const previousSignature = useRef(signature);
+
+	useEffect(() => {
+		if (previousSignature.current === signature) return;
+		previousSignature.current = signature;
+		setSearchInput("");
+		setSearch("");
+	}, [signature]);
 
 	useEffect(() => {
 		if (searchInput === "") {
@@ -98,6 +107,14 @@ export function useSelectOptions<T>({
 }) {
 	const pagination = usePaginatedSelect({ enabled, limit, queryFn, queryKey });
 	const [labels, setLabels] = useState<Record<string, string>>({});
+	const signature = JSON.stringify(queryKey);
+	const previousSignature = useRef(signature);
+
+	useEffect(() => {
+		if (previousSignature.current === signature) return;
+		previousSignature.current = signature;
+		setLabels({});
+	}, [signature]);
 
 	const remoteOptions = useMemo(
 		() =>

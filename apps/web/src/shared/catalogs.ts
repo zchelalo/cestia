@@ -36,10 +36,11 @@ export function useGroupSelectOptions(staticOptions?: SelectOption[]) {
 export function useGroupMemberSelectOptions(
 	groupId?: string | null,
 	staticOptions?: SelectOption[],
+	actorId?: string,
 ) {
 	return useSelectOptions<BackendOption>({
 		enabled: !!groupId,
-		queryKey: ["groups", groupId, "member-select-options"],
+		queryKey: ["groups", groupId, "member-select-options", { actor: actorId }],
 		queryFn: async ({ cursor, limit, search, signal }) => {
 			if (!groupId) return { items: [] };
 			const query = new URLSearchParams({ limit: limit.toString() });
