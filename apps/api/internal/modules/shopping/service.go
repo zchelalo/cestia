@@ -41,17 +41,25 @@ type ItemInput struct {
 	Version            int64
 }
 
-func (s *Service) Lists(ctx context.Context, userID uuid.UUID, groupID *uuid.UUID, includeArchived bool) ([]data.List, error) {
+func (s *Service) Lists(ctx context.Context, userID uuid.UUID, groupID *uuid.UUID, includeArchived bool, cursor string, limit int) ([]data.List, string, error) {
 	if groupID != nil {
 		if _, err := s.groupAccess(ctx, userID, *groupID); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-	lists, err := data.ListsForScope(ctx, s.store, userID, groupID, includeArchived)
+	lists, next, err := data.ListsForScope(ctx, s.store, userID, groupID, includeArchived, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return lists, nil
+	return lists, next, nil
+}
+
+func (s *Service) CountPersonalLists(ctx context.Context, userID uuid.UUID) (int, error) {
+	count, err := data.CountPersonalLists(ctx, s.store, userID, false)
+	if err != nil {
+		return 0, apperr.From(err)
+	}
+	return count, nil
 }
 
 func (s *Service) GetList(ctx context.Context, userID, listID uuid.UUID) (data.List, error) {
@@ -202,23 +210,29 @@ func (s *Service) ArchiveList(ctx context.Context, userID, listID uuid.UUID, arc
 	return s.GetList(ctx, userID, listID)
 }
 
-func (s *Service) Items(ctx context.Context, userID, listID uuid.UUID) ([]data.Item, error) {
-	if _, err := s.GetList(ctx, userID, listID); err != nil {
-		return nil, err
+func (s *Service) Items(ctx context.Context, userID, listID uuid.UUID, filter, cursor string, limit int) ([]data.Item, string, error) {
+	if filter == "" {
+		filter = "all"
 	}
-	items, err := data.ListItems(ctx, s.store, listID)
+	if filter != "all" && filter != "pending" && filter != "purchased" {
+		return nil, "", apperr.BadRequest("invalid_filter", "El filtro no es válido.")
+	}
+	if _, err := s.GetList(ctx, userID, listID); err != nil {
+		return nil, "", err
+	}
+	items, next, err := data.ListItems(ctx, s.store, listID, filter, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
 	for i := range items {
 		purchase, err := data.ActivePurchaseForItem(ctx, s.store, items[i].ID, false)
 		if err == nil {
 			items[i].Purchase = &purchase
 		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperr.Internal(err)
+			return nil, "", apperr.Internal(err)
 		}
 	}
-	return items, nil
+	return items, next, nil
 }
 
 func (s *Service) CreateItem(ctx context.Context, userID, listID uuid.UUID, in ItemInput) (data.Item, error) {
@@ -367,22 +381,19 @@ func (s *Service) DeleteItem(ctx context.Context, userID, itemID uuid.UUID, vers
 	})
 }
 
-func (s *Service) Activity(ctx context.Context, userID uuid.UUID, groupID *uuid.UUID, limit int) ([]data.Activity, error) {
+func (s *Service) Activity(ctx context.Context, userID uuid.UUID, groupID *uuid.UUID, cursor string, limit int) ([]data.Activity, string, error) {
 	scope := "personal"
 	if groupID != nil {
 		scope = "group"
 		if _, err := s.groupAccess(ctx, userID, *groupID); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
-	if limit <= 0 || limit > 100 {
-		limit = 30
-	}
-	events, err := data.LastActivity(ctx, s.store, scope, userID, groupID, limit)
+	events, next, err := data.LastActivity(ctx, s.store, scope, userID, groupID, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return events, nil
+	return events, next, nil
 }
 
 func (s *Service) groupAccess(ctx context.Context, userID, groupID uuid.UUID) (data.Group, error) {

@@ -417,12 +417,12 @@ func (s *Service) Deactivate(ctx context.Context, userID uuid.UUID, password str
 	})
 }
 
-func (s *Service) Sessions(ctx context.Context, userID uuid.UUID) ([]data.Session, error) {
-	sessions, err := data.ListSessions(ctx, s.store, userID, s.now().UTC())
+func (s *Service) Sessions(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]data.Session, string, error) {
+	sessions, next, err := data.ListSessions(ctx, s.store, userID, s.now().UTC(), cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return sessions, nil
+	return sessions, next, nil
 }
 
 func (s *Service) RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error {

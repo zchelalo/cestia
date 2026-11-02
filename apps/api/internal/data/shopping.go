@@ -49,35 +49,70 @@ func ListForUserShare(ctx context.Context, q Querier, id, userID uuid.UUID) (Lis
 		row.PendingCount, row.PurchasedCount), nil
 }
 
-func ListsForScope(ctx context.Context, q Querier, userID uuid.UUID, groupID *uuid.UUID, includeArchived bool) ([]List, error) {
+func ListsForScope(ctx context.Context, q Querier, userID uuid.UUID, groupID *uuid.UUID, includeArchived bool, cursor string, limit int) ([]List, string, error) {
+	page, fetch := pageLimit(limit)
+	kind := "personal-lists"
+	if groupID != nil {
+		kind = "group-lists"
+	}
+	var payload updatedCursor
+	if err := decodePageCursor(cursor, kind, &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorArchived *int32
+	var cursorUpdatedAt *time.Time
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		archived := int32(payload.Archived)
+		cursorArchived, cursorUpdatedAt, cursorID = &archived, &payload.UpdatedAt, &payload.ID
+	}
+	out := make([]List, 0, fetch)
 	if groupID == nil {
 		rows, err := q.Queries().ListPersonalLists(ctx, cestia.ListPersonalListsParams{
-			UserID: userID, IncludeArchived: includeArchived,
+			UserID: userID, IncludeArchived: includeArchived, CursorArchived: cursorArchived,
+			CursorUpdatedAt: cursorUpdatedAt, CursorID: cursorID, LimitCount: fetch,
 		})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		out := make([]List, 0, len(rows))
 		for _, row := range rows {
 			out = append(out, listFromParts(row.ID, row.Name, row.Description, row.PersonalOwnerID,
 				row.GroupID, row.CreatedBy, row.ArchivedAt, row.Version, row.CreatedAt, row.UpdatedAt,
 				row.Role, row.PendingCount, row.PurchasedCount))
 		}
-		return out, nil
+	} else {
+		rows, err := q.Queries().ListGroupLists(ctx, cestia.ListGroupListsParams{
+			UserID: userID, GroupID: *groupID, IncludeArchived: includeArchived,
+			CursorArchived: cursorArchived, CursorUpdatedAt: cursorUpdatedAt, CursorID: cursorID,
+			LimitCount: fetch,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		for _, row := range rows {
+			out = append(out, listFromParts(row.ID, row.Name, row.Description, row.PersonalOwnerID,
+				row.GroupID, row.CreatedBy, row.ArchivedAt, row.Version, row.CreatedAt, row.UpdatedAt,
+				row.Role, row.PendingCount, row.PurchasedCount))
+		}
 	}
-	rows, err := q.Queries().ListGroupLists(ctx, cestia.ListGroupListsParams{
-		UserID: userID, GroupID: *groupID, IncludeArchived: includeArchived,
+	out, next := pageOf(out, page, func(l List) string {
+		archived := 0
+		if l.ArchivedAt != nil {
+			archived = 1
+		}
+		return encodePageCursor(kind, updatedCursor{Archived: archived, UpdatedAt: l.UpdatedAt, ID: l.ID})
+	})
+	return out, next, nil
+}
+
+func CountPersonalLists(ctx context.Context, q Querier, userID uuid.UUID, includeArchived bool) (int, error) {
+	count, err := q.Queries().CountPersonalLists(ctx, cestia.CountPersonalListsParams{
+		UserID: userID, IncludeArchived: includeArchived,
 	})
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	out := make([]List, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, listFromParts(row.ID, row.Name, row.Description, row.PersonalOwnerID,
-			row.GroupID, row.CreatedBy, row.ArchivedAt, row.Version, row.CreatedAt, row.UpdatedAt,
-			row.Role, row.PendingCount, row.PurchasedCount))
-	}
-	return out, nil
+	return int(count), nil
 }
 
 func CreateList(ctx context.Context, q Querier, l List) error {
@@ -143,16 +178,35 @@ func itemFromUpdateAnyRow(row cestia.GetItemForUpdateAnyRow) Item {
 	}
 }
 
-func ListItems(ctx context.Context, q Querier, listID uuid.UUID) ([]Item, error) {
-	rows, err := q.Queries().ListItems(ctx, listID)
+func ListItems(ctx context.Context, q Querier, listID uuid.UUID, filter, cursor string, limit int) ([]Item, string, error) {
+	page, fetch := pageLimit(limit)
+	if filter == "" {
+		filter = "all"
+	}
+	var payload createdCursor
+	if err := decodePageCursor(cursor, "items", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorCreatedAt *time.Time
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		cursorCreatedAt, cursorID = &payload.CreatedAt, &payload.ID
+	}
+	rows, err := q.Queries().ListItems(ctx, cestia.ListItemsParams{
+		ListID: listID, ItemFilter: filter, CursorCreatedAt: cursorCreatedAt,
+		CursorID: cursorID, LimitCount: fetch,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]Item, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, itemFromListRow(row))
 	}
-	return out, nil
+	out, next := pageOf(out, page, func(item Item) string {
+		return encodePageCursor("items", createdCursor{CreatedAt: item.CreatedAt, ID: item.ID})
+	})
+	return out, next, nil
 }
 
 func ItemForUser(ctx context.Context, q Querier, itemID, userID uuid.UUID, lock bool) (Item, List, error) {
@@ -308,31 +362,44 @@ func activityFromParts(id uuid.UUID, scopeType string, actorID *uuid.UUID, actor
 	}
 }
 
-func LastActivity(ctx context.Context, q Querier, scopeType string, userID uuid.UUID, groupID *uuid.UUID, limit int) ([]Activity, error) {
+func LastActivity(ctx context.Context, q Querier, scopeType string, userID uuid.UUID, groupID *uuid.UUID, cursor string, limit int) ([]Activity, string, error) {
+	page, fetch := pageLimit(limit)
+	var payload createdCursor
+	if err := decodePageCursor(cursor, "activity", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorCreatedAt *time.Time
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		cursorCreatedAt, cursorID = &payload.CreatedAt, &payload.ID
+	}
+	out := make([]Activity, 0, fetch)
 	if groupID != nil {
 		rows, err := q.Queries().ListGroupActivity(ctx, cestia.ListGroupActivityParams{
-			GroupID: *groupID, LimitCount: int32(limit),
+			GroupID: *groupID, CursorCreatedAt: cursorCreatedAt, CursorID: cursorID,
+			LimitCount: fetch,
 		})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		out := make([]Activity, 0, len(rows))
 		for _, row := range rows {
 			out = append(out, activityFromParts(row.ID, row.ScopeType, row.ActorID, row.ActorName,
 				row.GroupID, row.ListID, row.ItemID, row.PurchaseID, row.Action, row.Payload, row.CreatedAt))
 		}
-		return out, nil
+	} else {
+		rows, err := q.Queries().ListPersonalActivity(ctx, cestia.ListPersonalActivityParams{
+			UserID: userID, CursorCreatedAt: cursorCreatedAt, CursorID: cursorID, LimitCount: fetch,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		for _, row := range rows {
+			out = append(out, activityFromParts(row.ID, row.ScopeType, row.ActorID, row.ActorName,
+				row.GroupID, row.ListID, row.ItemID, row.PurchaseID, row.Action, row.Payload, row.CreatedAt))
+		}
 	}
-	rows, err := q.Queries().ListPersonalActivity(ctx, cestia.ListPersonalActivityParams{
-		UserID: userID, LimitCount: int32(limit),
+	out, next := pageOf(out, page, func(event Activity) string {
+		return encodePageCursor("activity", createdCursor{CreatedAt: event.CreatedAt, ID: event.ID})
 	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Activity, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, activityFromParts(row.ID, row.ScopeType, row.ActorID, row.ActorName,
-			row.GroupID, row.ListID, row.ItemID, row.PurchaseID, row.Action, row.Payload, row.CreatedAt))
-	}
-	return out, nil
+	return out, next, nil
 }

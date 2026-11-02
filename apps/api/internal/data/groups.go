@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,17 +82,55 @@ func GroupByIDForUpdate(ctx context.Context, q Querier, id uuid.UUID) (Group, er
 		row.ArchivedAt, row.Version, row.CreatedAt, row.UpdatedAt, row.Role, row.MemberCount, row.ListCount), nil
 }
 
-func ListGroups(ctx context.Context, q Querier, userID uuid.UUID) ([]Group, error) {
-	rows, err := q.Queries().ListGroupsForUser(ctx, userID)
+func ListGroups(ctx context.Context, q Querier, userID uuid.UUID, cursor string, limit int) ([]Group, string, error) {
+	page, fetch := pageLimit(limit)
+	var payload nameCursor
+	if err := decodePageCursor(cursor, "groups", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorArchived *int32
+	var cursorName *string
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		archived := int32(payload.Archived)
+		cursorArchived, cursorName, cursorID = &archived, &payload.Name, &payload.ID
+	}
+	rows, err := q.Queries().ListGroupsForUser(ctx, cestia.ListGroupsForUserParams{
+		UserID: userID, CursorArchived: cursorArchived, CursorName: cursorName,
+		CursorID: cursorID, LimitCount: fetch,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]Group, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, groupFromParts(row.ID, row.Name, row.Description, row.OwnerUserID, row.CreatedBy,
 			row.ArchivedAt, row.Version, row.CreatedAt, row.UpdatedAt, row.Role, row.MemberCount, row.ListCount))
 	}
-	return out, nil
+	out, next := pageOf(out, page, func(g Group) string {
+		archived := 0
+		if g.ArchivedAt != nil {
+			archived = 1
+		}
+		return encodePageCursor("groups", nameCursor{Archived: archived, Name: strings.ToLower(g.Name), ID: g.ID})
+	})
+	return out, next, nil
+}
+
+func CountGroups(ctx context.Context, q Querier, userID uuid.UUID) (int, error) {
+	count, err := q.Queries().CountGroupsForUser(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+func CountGroupMembersTotal(ctx context.Context, q Querier, userID uuid.UUID) (int, error) {
+	count, err := q.Queries().CountGroupMembersForUser(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
 }
 
 func CreateGroup(ctx context.Context, q Querier, g Group) error {
@@ -107,10 +146,25 @@ func AddGroupMember(ctx context.Context, q Querier, groupID, userID uuid.UUID, r
 	})
 }
 
-func ListGroupMembers(ctx context.Context, q Querier, groupID uuid.UUID) ([]GroupMember, error) {
-	rows, err := q.Queries().ListGroupMembers(ctx, groupID)
+func ListGroupMembers(ctx context.Context, q Querier, groupID uuid.UUID, includeOwner bool, cursor string, limit int) ([]GroupMember, string, error) {
+	page, fetch := pageLimit(limit)
+	var payload memberCursor
+	if err := decodePageCursor(cursor, "members", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorPriority *int32
+	var cursorName *string
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		priority := int32(payload.Priority)
+		cursorPriority, cursorName, cursorID = &priority, &payload.Name, &payload.ID
+	}
+	rows, err := q.Queries().ListGroupMembers(ctx, cestia.ListGroupMembersParams{
+		GroupID: groupID, IncludeOwner: includeOwner, CursorPriority: cursorPriority,
+		CursorName: cursorName, CursorID: cursorID, LimitCount: fetch,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]GroupMember, 0, len(rows))
 	for _, row := range rows {
@@ -119,7 +173,18 @@ func ListGroupMembers(ctx context.Context, q Querier, groupID uuid.UUID) ([]Grou
 			JoinedAt: row.JoinedAt, RemovedAt: row.RemovedAt,
 		})
 	}
-	return out, nil
+	out, next := pageOf(out, page, func(m GroupMember) string {
+		priority := 2
+		if m.Role == "owner" {
+			priority = 0
+		} else if m.Role == "admin" {
+			priority = 1
+		}
+		return encodePageCursor("members", memberCursor{
+			Priority: priority, Name: strings.ToLower(m.DisplayName), ID: m.UserID,
+		})
+	})
+	return out, next, nil
 }
 
 func GroupMemberRole(ctx context.Context, q Querier, groupID, userID uuid.UUID) (string, error) {
@@ -200,17 +265,33 @@ func invitationFromParts(id, groupID uuid.UUID, groupName, email string, invited
 	}
 }
 
-func ListInvitations(ctx context.Context, q Querier, groupID uuid.UUID) ([]Invitation, error) {
-	rows, err := q.Queries().ListInvitations(ctx, groupID)
+func ListInvitations(ctx context.Context, q Querier, groupID uuid.UUID, status, cursor string, limit int) ([]Invitation, string, error) {
+	page, fetch := pageLimit(limit)
+	var payload createdCursor
+	if err := decodePageCursor(cursor, "invitations", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorCreatedAt *time.Time
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		cursorCreatedAt, cursorID = &payload.CreatedAt, &payload.ID
+	}
+	rows, err := q.Queries().ListInvitations(ctx, cestia.ListInvitationsParams{
+		GroupID: groupID, StatusFilter: status, CursorCreatedAt: cursorCreatedAt,
+		CursorID: cursorID, LimitCount: fetch,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]Invitation, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, invitationFromParts(row.ID, row.GroupID, row.GroupName, row.Email, row.InvitedBy,
 			row.Status, row.Generation, row.ExpiresAt, row.ResolvedAt, row.ResolvedBy, row.Version, row.CreatedAt, row.UpdatedAt))
 	}
-	return out, nil
+	out, next := pageOf(out, page, func(inv Invitation) string {
+		return encodePageCursor("invitations", createdCursor{CreatedAt: inv.CreatedAt, ID: inv.ID})
+	})
+	return out, next, nil
 }
 
 func InvitationByID(ctx context.Context, q Querier, id uuid.UUID, lock bool) (Invitation, error) {

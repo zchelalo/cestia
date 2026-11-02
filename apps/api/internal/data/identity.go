@@ -141,16 +141,32 @@ func RevokeAllSessions(ctx context.Context, q Querier, userID uuid.UUID, at time
 	return q.Queries().RevokeAllSessions(ctx, cestia.RevokeAllSessionsParams{UserID: userID, At: at})
 }
 
-func ListSessions(ctx context.Context, q Querier, userID uuid.UUID, now time.Time) ([]Session, error) {
-	rows, err := q.Queries().ListActiveSessions(ctx, cestia.ListActiveSessionsParams{UserID: userID, Now: now})
+func ListSessions(ctx context.Context, q Querier, userID uuid.UUID, now time.Time, cursor string, limit int) ([]Session, string, error) {
+	page, fetch := pageLimit(limit)
+	var payload createdCursor
+	if err := decodePageCursor(cursor, "sessions", &payload); err != nil {
+		return nil, "", err
+	}
+	var cursorCreatedAt *time.Time
+	var cursorID *uuid.UUID
+	if cursor != "" {
+		cursorCreatedAt, cursorID = &payload.CreatedAt, &payload.ID
+	}
+	rows, err := q.Queries().ListActiveSessions(ctx, cestia.ListActiveSessionsParams{
+		UserID: userID, Now: now, CursorCreatedAt: cursorCreatedAt, CursorID: cursorID,
+		LimitCount: fetch,
+	})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	out := make([]Session, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, sessionFromRow(row))
 	}
-	return out, nil
+	out, next := pageOf(out, page, func(session Session) string {
+		return encodePageCursor("sessions", createdCursor{CreatedAt: session.CreatedAt, ID: session.ID})
+	})
+	return out, next, nil
 }
 
 type EmailAction struct {

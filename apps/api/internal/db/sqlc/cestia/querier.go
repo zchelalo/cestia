@@ -23,8 +23,12 @@ type Querier interface {
 	ClaimEmailDeliveries(ctx context.Context, arg ClaimEmailDeliveriesParams) ([]ClaimEmailDeliveriesRow, error)
 	ConsumeEmailAction(ctx context.Context, arg ConsumeEmailActionParams) error
 	ConsumeEmailActionsForUserPurpose(ctx context.Context, arg ConsumeEmailActionsForUserPurposeParams) error
+	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
+	CountGroupMembersForUser(ctx context.Context, userID uuid.UUID) (int64, error)
+	CountGroupsForUser(ctx context.Context, userID uuid.UUID) (int64, error)
 	CountLockWaitsForApplication(ctx context.Context, applicationName string) (int64, error)
 	CountOwnedGroups(ctx context.Context, userID uuid.UUID) (int64, error)
+	CountPersonalLists(ctx context.Context, arg CountPersonalListsParams) (int64, error)
 	CreateEmailAction(ctx context.Context, arg CreateEmailActionParams) error
 	CreateEmailDeliveryForAction(ctx context.Context, arg CreateEmailDeliveryForActionParams) error
 	CreateGroup(ctx context.Context, arg CreateGroupParams) error
@@ -74,11 +78,12 @@ type Querier interface {
 	ListGroupActivity(ctx context.Context, arg ListGroupActivityParams) ([]ListGroupActivityRow, error)
 	ListGroupLists(ctx context.Context, arg ListGroupListsParams) ([]ListGroupListsRow, error)
 	ListGroupMemberOptions(ctx context.Context, arg ListGroupMemberOptionsParams) ([]ListGroupMemberOptionsRow, error)
-	ListGroupMembers(ctx context.Context, groupID uuid.UUID) ([]ListGroupMembersRow, error)
+	ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error)
 	ListGroupOptions(ctx context.Context, arg ListGroupOptionsParams) ([]ListGroupOptionsRow, error)
-	ListGroupsForUser(ctx context.Context, userID uuid.UUID) ([]ListGroupsForUserRow, error)
-	ListInvitations(ctx context.Context, groupID uuid.UUID) ([]ListInvitationsRow, error)
-	ListItems(ctx context.Context, listID uuid.UUID) ([]ListItemsRow, error)
+	ListGroupsForUser(ctx context.Context, arg ListGroupsForUserParams) ([]ListGroupsForUserRow, error)
+	ListInvitations(ctx context.Context, arg ListInvitationsParams) ([]ListInvitationsRow, error)
+	ListItems(ctx context.Context, arg ListItemsParams) ([]ListItemsRow, error)
+	ListPayerExpenses(ctx context.Context, arg ListPayerExpensesParams) ([]ListPayerExpensesRow, error)
 	ListPersonalActivity(ctx context.Context, arg ListPersonalActivityParams) ([]ListPersonalActivityRow, error)
 	ListPersonalLists(ctx context.Context, arg ListPersonalListsParams) ([]ListPersonalListsRow, error)
 	ListPurchaseHistory(ctx context.Context, arg ListPurchaseHistoryParams) ([]ListPurchaseHistoryRow, error)

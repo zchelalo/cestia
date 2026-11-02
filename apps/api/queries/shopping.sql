@@ -96,7 +96,22 @@ SELECT l.id, l.name, l.description, l.personal_owner_id, l.group_id, l.created_b
 FROM shopping_lists l
 WHERE l.personal_owner_id = sqlc.arg(user_id)::uuid
   AND (sqlc.arg(include_archived)::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC;
+  AND (
+    sqlc.narg(cursor_archived)::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > sqlc.narg(cursor_archived)::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = sqlc.narg(cursor_archived)::integer
+      AND (l.updated_at, l.id) < (sqlc.narg(cursor_updated_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT sqlc.arg(limit_count)::integer;
+
+-- name: CountPersonalLists :one
+SELECT count(*)
+FROM shopping_lists l
+WHERE l.personal_owner_id = sqlc.arg(user_id)::uuid
+  AND (sqlc.arg(include_archived)::boolean = true OR l.archived_at IS NULL);
 
 -- name: ListGroupLists :many
 SELECT l.id, l.name, l.description, l.personal_owner_id, l.group_id, l.created_by,
@@ -119,7 +134,16 @@ LEFT JOIN group_members gm
 WHERE l.group_id = sqlc.arg(group_id)::uuid
   AND (g.owner_user_id = sqlc.arg(user_id)::uuid OR gm.user_id IS NOT NULL)
   AND (sqlc.arg(include_archived)::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC;
+  AND (
+    sqlc.narg(cursor_archived)::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > sqlc.narg(cursor_archived)::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = sqlc.narg(cursor_archived)::integer
+      AND (l.updated_at, l.id) < (sqlc.narg(cursor_updated_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT sqlc.arg(limit_count)::integer;
 
 -- name: CreateList :exec
 INSERT INTO shopping_lists (
@@ -177,7 +201,21 @@ FROM shopping_list_items i
 LEFT JOIN users u ON u.id = i.assigned_to
 WHERE i.list_id = sqlc.arg(list_id)::uuid
   AND i.deleted_at IS NULL
-ORDER BY i.created_at, i.id;
+  AND (
+    sqlc.arg(item_filter)::text = 'all'
+    OR (sqlc.arg(item_filter)::text = 'pending' AND NOT EXISTS (
+      SELECT 1 FROM purchases p1 WHERE p1.item_id = i.id AND p1.reversed_at IS NULL
+    ))
+    OR (sqlc.arg(item_filter)::text = 'purchased' AND EXISTS (
+      SELECT 1 FROM purchases p2 WHERE p2.item_id = i.id AND p2.reversed_at IS NULL
+    ))
+  )
+  AND (
+    sqlc.narg(cursor_created_at)::timestamptz IS NULL
+    OR (i.created_at, i.id) > (sqlc.narg(cursor_created_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+  )
+ORDER BY i.created_at, i.id
+LIMIT sqlc.arg(limit_count)::integer;
 
 -- name: GetItem :one
 SELECT i.id, i.list_id, i.name, i.description, i.quantity AS quantity, i.unit,
@@ -427,6 +465,10 @@ LEFT JOIN users u ON u.id = a.actor_id
 WHERE a.scope_type = 'personal'
   AND (a.actor_id = sqlc.arg(user_id)::uuid
     OR a.list_id IN (SELECT id FROM shopping_lists WHERE personal_owner_id = sqlc.arg(user_id)::uuid))
+  AND (
+    sqlc.narg(cursor_created_at)::timestamptz IS NULL
+    OR (a.created_at, a.id) < (sqlc.narg(cursor_created_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+  )
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT sqlc.arg(limit_count)::integer;
 
@@ -437,6 +479,10 @@ FROM activity_events a
 LEFT JOIN users u ON u.id = a.actor_id
 WHERE a.scope_type = 'group'
   AND a.group_id = sqlc.arg(group_id)::uuid
+  AND (
+    sqlc.narg(cursor_created_at)::timestamptz IS NULL
+    OR (a.created_at, a.id) < (sqlc.narg(cursor_created_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+  )
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT sqlc.arg(limit_count)::integer;
 
@@ -486,8 +532,35 @@ WHERE p.reversed_at IS NULL
 GROUP BY p.paid_by, u.display_name
 ORDER BY SUM(p.total_amount) DESC NULLS LAST;
 
+-- name: ListPayerExpenses :many
+SELECT p.paid_by, COALESCE(u.display_name, 'No identificado')::text AS display_name,
+       COALESCE(SUM(p.total_amount), 0)::text AS amount, COUNT(p.id) AS purchase_count
+FROM purchases p
+JOIN shopping_list_items i ON i.id = p.item_id
+JOIN shopping_lists l ON l.id = i.list_id
+LEFT JOIN users u ON u.id = p.paid_by
+WHERE p.reversed_at IS NULL
+  AND ((sqlc.narg(personal_owner_id)::uuid IS NOT NULL AND l.personal_owner_id = sqlc.narg(personal_owner_id)::uuid)
+    OR (sqlc.narg(group_id)::uuid IS NOT NULL AND l.group_id = sqlc.narg(group_id)::uuid))
+  AND (sqlc.arg(include_archived)::boolean = true OR l.archived_at IS NULL)
+  AND (sqlc.narg(from_at)::timestamptz IS NULL OR p.purchased_at >= sqlc.narg(from_at)::timestamptz)
+  AND (sqlc.narg(to_at)::timestamptz IS NULL OR p.purchased_at < sqlc.narg(to_at)::timestamptz)
+GROUP BY p.paid_by, u.display_name
+HAVING (
+  sqlc.narg(cursor_amount)::numeric IS NULL
+  OR COALESCE(SUM(p.total_amount), 0) < sqlc.narg(cursor_amount)::numeric
+  OR (
+    COALESCE(SUM(p.total_amount), 0) = sqlc.narg(cursor_amount)::numeric
+    AND COALESCE(p.paid_by, '00000000-0000-0000-0000-000000000000'::uuid)
+      < sqlc.narg(cursor_payer_id)::uuid
+  )
+)
+ORDER BY COALESCE(SUM(p.total_amount), 0) DESC,
+         COALESCE(p.paid_by, '00000000-0000-0000-0000-000000000000'::uuid) DESC
+LIMIT sqlc.arg(limit_count)::integer;
+
 -- name: ExpensesByList :many
-SELECT l.id AS list_id, l.name, l.archived_at,
+SELECT l.id AS list_id, l.name, l.archived_at, l.updated_at,
        COALESCE(actual.amount, 0)::text AS actual_known,
        COALESCE(estimated.amount, 0)::text AS estimated_known,
        COALESCE(estimated.pending, 0)::text AS pending_estimated,
@@ -513,4 +586,13 @@ LEFT JOIN LATERAL (
 WHERE ((sqlc.narg(personal_owner_id)::uuid IS NOT NULL AND l.personal_owner_id = sqlc.narg(personal_owner_id)::uuid)
     OR (sqlc.narg(group_id)::uuid IS NOT NULL AND l.group_id = sqlc.narg(group_id)::uuid))
   AND (sqlc.arg(include_archived)::boolean = true OR l.archived_at IS NULL)
-ORDER BY l.archived_at NULLS FIRST, l.updated_at DESC;
+  AND (
+    sqlc.narg(cursor_archived)::integer IS NULL
+    OR (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) > sqlc.narg(cursor_archived)::integer
+    OR (
+      (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END) = sqlc.narg(cursor_archived)::integer
+      AND (l.updated_at, l.id) < (sqlc.narg(cursor_updated_at)::timestamptz, sqlc.narg(cursor_id)::uuid)
+    )
+  )
+ORDER BY (CASE WHEN l.archived_at IS NULL THEN 0 ELSE 1 END), l.updated_at DESC, l.id DESC
+LIMIT sqlc.arg(limit_count)::integer;

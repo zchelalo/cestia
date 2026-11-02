@@ -96,6 +96,64 @@ func (q *Queries) CancelInvitationDeliveries(ctx context.Context, arg CancelInvi
 	return err
 }
 
+const countGroupMembers = `-- name: CountGroupMembers :one
+SELECT count(*)
+FROM group_members gm
+JOIN users u ON u.id = gm.user_id
+JOIN groups g ON g.id = gm.group_id
+WHERE gm.group_id = $1::uuid
+  AND gm.removed_at IS NULL
+  AND ($2::boolean = true OR g.owner_user_id <> u.id)
+`
+
+type CountGroupMembersParams struct {
+	GroupID      uuid.UUID `json:"group_id"`
+	IncludeOwner bool      `json:"include_owner"`
+}
+
+func (q *Queries) CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroupMembers, arg.GroupID, arg.IncludeOwner)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countGroupMembersForUser = `-- name: CountGroupMembersForUser :one
+SELECT COALESCE(SUM((
+  SELECT count(*) FROM group_members m WHERE m.group_id = g.id AND m.removed_at IS NULL
+)), 0)::bigint AS members_total
+FROM groups g
+LEFT JOIN group_members gm
+  ON gm.group_id = g.id
+ AND gm.user_id = $1::uuid
+ AND gm.removed_at IS NULL
+WHERE g.owner_user_id = $1::uuid OR gm.user_id IS NOT NULL
+`
+
+func (q *Queries) CountGroupMembersForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroupMembersForUser, userID)
+	var members_total int64
+	err := row.Scan(&members_total)
+	return members_total, err
+}
+
+const countGroupsForUser = `-- name: CountGroupsForUser :one
+SELECT count(*)
+FROM groups g
+LEFT JOIN group_members gm
+  ON gm.group_id = g.id
+ AND gm.user_id = $1::uuid
+ AND gm.removed_at IS NULL
+WHERE g.owner_user_id = $1::uuid OR gm.user_id IS NOT NULL
+`
+
+func (q *Queries) CountGroupsForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countGroupsForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createGroup = `-- name: CreateGroup :exec
 INSERT INTO groups (id, name, description, owner_user_id, created_by, version, created_at, updated_at)
 VALUES (
@@ -658,9 +716,28 @@ JOIN users u ON u.id = gm.user_id
 JOIN groups g ON g.id = gm.group_id
 WHERE gm.group_id = $1::uuid
   AND gm.removed_at IS NULL
+  AND ($2::boolean = true OR g.owner_user_id <> u.id)
+  AND (
+    $3::integer IS NULL
+    OR (CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END) > $3::integer
+    OR (
+      (CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END) = $3::integer
+      AND (lower(u.display_name), u.id) > ($4::text, $5::uuid)
+    )
+  )
 ORDER BY CASE WHEN g.owner_user_id = u.id THEN 0 WHEN gm.role = 'admin' THEN 1 ELSE 2 END,
-         lower(u.display_name)
+         lower(u.display_name), u.id
+LIMIT $6::integer
 `
+
+type ListGroupMembersParams struct {
+	GroupID        uuid.UUID  `json:"group_id"`
+	IncludeOwner   bool       `json:"include_owner"`
+	CursorPriority *int32     `json:"cursor_priority"`
+	CursorName     *string    `json:"cursor_name"`
+	CursorID       *uuid.UUID `json:"cursor_id"`
+	LimitCount     int32      `json:"limit_count"`
+}
 
 type ListGroupMembersRow struct {
 	UserID      uuid.UUID  `json:"user_id"`
@@ -671,8 +748,15 @@ type ListGroupMembersRow struct {
 	RemovedAt   *time.Time `json:"removed_at"`
 }
 
-func (q *Queries) ListGroupMembers(ctx context.Context, groupID uuid.UUID) ([]ListGroupMembersRow, error) {
-	rows, err := q.db.Query(ctx, listGroupMembers, groupID)
+func (q *Queries) ListGroupMembers(ctx context.Context, arg ListGroupMembersParams) ([]ListGroupMembersRow, error) {
+	rows, err := q.db.Query(ctx, listGroupMembers,
+		arg.GroupID,
+		arg.IncludeOwner,
+		arg.CursorPriority,
+		arg.CursorName,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -709,9 +793,26 @@ LEFT JOIN group_members gm
   ON gm.group_id = g.id
  AND gm.user_id = $1::uuid
  AND gm.removed_at IS NULL
-WHERE g.owner_user_id = $1::uuid OR gm.user_id IS NOT NULL
-ORDER BY g.archived_at NULLS FIRST, lower(g.name)
+WHERE (g.owner_user_id = $1::uuid OR gm.user_id IS NOT NULL)
+  AND (
+    $2::integer IS NULL
+    OR (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END) > $2::integer
+    OR (
+      (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END) = $2::integer
+      AND (lower(g.name), g.id) > ($3::text, $4::uuid)
+    )
+  )
+ORDER BY (CASE WHEN g.archived_at IS NULL THEN 0 ELSE 1 END), lower(g.name), g.id
+LIMIT $5::integer
 `
+
+type ListGroupsForUserParams struct {
+	UserID         uuid.UUID  `json:"user_id"`
+	CursorArchived *int32     `json:"cursor_archived"`
+	CursorName     *string    `json:"cursor_name"`
+	CursorID       *uuid.UUID `json:"cursor_id"`
+	LimitCount     int32      `json:"limit_count"`
+}
 
 type ListGroupsForUserRow struct {
 	ID          uuid.UUID  `json:"id"`
@@ -728,8 +829,14 @@ type ListGroupsForUserRow struct {
 	ListCount   int64      `json:"list_count"`
 }
 
-func (q *Queries) ListGroupsForUser(ctx context.Context, userID uuid.UUID) ([]ListGroupsForUserRow, error) {
-	rows, err := q.db.Query(ctx, listGroupsForUser, userID)
+func (q *Queries) ListGroupsForUser(ctx context.Context, arg ListGroupsForUserParams) ([]ListGroupsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listGroupsForUser,
+		arg.UserID,
+		arg.CursorArchived,
+		arg.CursorName,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -768,8 +875,22 @@ SELECT i.id, i.group_id, g.name AS group_name, i.email, i.invited_by, i.status,
 FROM group_invitations i
 JOIN groups g ON g.id = i.group_id
 WHERE i.group_id = $1::uuid
-ORDER BY i.created_at DESC
+  AND ($2::text = '' OR i.status = $2::text)
+  AND (
+    $3::timestamptz IS NULL
+    OR (i.created_at, i.id) < ($3::timestamptz, $4::uuid)
+  )
+ORDER BY i.created_at DESC, i.id DESC
+LIMIT $5::integer
 `
+
+type ListInvitationsParams struct {
+	GroupID         uuid.UUID  `json:"group_id"`
+	StatusFilter    string     `json:"status_filter"`
+	CursorCreatedAt *time.Time `json:"cursor_created_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
+}
 
 type ListInvitationsRow struct {
 	ID         uuid.UUID  `json:"id"`
@@ -787,8 +908,14 @@ type ListInvitationsRow struct {
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
-func (q *Queries) ListInvitations(ctx context.Context, groupID uuid.UUID) ([]ListInvitationsRow, error) {
-	rows, err := q.db.Query(ctx, listInvitations, groupID)
+func (q *Queries) ListInvitations(ctx context.Context, arg ListInvitationsParams) ([]ListInvitationsRow, error) {
+	rows, err := q.db.Query(ctx, listInvitations,
+		arg.GroupID,
+		arg.StatusFilter,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

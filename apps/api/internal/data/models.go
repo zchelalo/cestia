@@ -155,6 +155,7 @@ type ExpenseSummary struct {
 	PendingCount          int          `json:"pending_count"`
 	PurchasedCount        int          `json:"purchased_count"`
 	UnidentifiedPaid      string       `json:"unidentified_paid"`
+	MaxPayerAmount        string       `json:"max_payer_amount"`
 	ByPayer               []PayerTotal `json:"by_payer"`
 }
 

@@ -582,16 +582,30 @@ FROM sessions
 WHERE user_id = $1::uuid
   AND revoked_at IS NULL
   AND expires_at > $2::timestamptz
-ORDER BY created_at DESC
+  AND (
+    $3::timestamptz IS NULL
+    OR (created_at, id) < ($3::timestamptz, $4::uuid)
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT $5::integer
 `
 
 type ListActiveSessionsParams struct {
-	UserID uuid.UUID `json:"user_id"`
-	Now    time.Time `json:"now"`
+	UserID          uuid.UUID  `json:"user_id"`
+	Now             time.Time  `json:"now"`
+	CursorCreatedAt *time.Time `json:"cursor_created_at"`
+	CursorID        *uuid.UUID `json:"cursor_id"`
+	LimitCount      int32      `json:"limit_count"`
 }
 
 func (q *Queries) ListActiveSessions(ctx context.Context, arg ListActiveSessionsParams) ([]Session, error) {
-	rows, err := q.db.Query(ctx, listActiveSessions, arg.UserID, arg.Now)
+	rows, err := q.db.Query(ctx, listActiveSessions,
+		arg.UserID,
+		arg.Now,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

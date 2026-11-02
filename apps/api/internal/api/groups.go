@@ -54,12 +54,17 @@ func (s *Server) memberOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listGroups(w http.ResponseWriter, r *http.Request) {
-	groups, err := s.groups.List(r.Context(), currentUser(r.Context()).ID)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, groups, nil)
+	groups, next, err := s.groups.List(r.Context(), currentUser(r.Context()).ID, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, groups, page.pageMeta(next))
 }
 
 func (s *Server) createGroup(w http.ResponseWriter, r *http.Request) {
@@ -151,12 +156,18 @@ func (s *Server) members(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	members, err := s.groups.Members(r.Context(), currentUser(r.Context()).ID, groupID)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, members, nil)
+	includeOwner := defaultString(r.URL.Query().Get("include_owner"), "true") != "false"
+	members, next, err := s.groups.Members(r.Context(), currentUser(r.Context()).ID, groupID, includeOwner, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, members, page.pageMeta(next))
 }
 
 func (s *Server) setMemberRole(w http.ResponseWriter, r *http.Request) {
@@ -242,12 +253,18 @@ func (s *Server) invitations(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, err)
 		return
 	}
-	items, err := s.groups.Invitations(r.Context(), currentUser(r.Context()).ID, groupID)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
 	}
-	s.writeJSON(w, r, http.StatusOK, items, nil)
+	items, next, err := s.groups.Invitations(r.Context(), currentUser(r.Context()).ID, groupID,
+		r.URL.Query().Get("status"), page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
+		return
+	}
+	s.writeJSON(w, r, http.StatusOK, items, page.pageMeta(next))
 }
 
 func (s *Server) invite(w http.ResponseWriter, r *http.Request) {

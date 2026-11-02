@@ -38,12 +38,24 @@ func (s *Service) MemberOptions(ctx context.Context, userID, groupID uuid.UUID, 
 	return data.ListGroupMemberOptions(ctx, s.store, groupID, search, cursor, limit)
 }
 
-func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]data.Group, error) {
-	items, err := data.ListGroups(ctx, s.store, userID)
+func (s *Service) List(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]data.Group, string, error) {
+	items, next, err := data.ListGroups(ctx, s.store, userID, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return items, nil
+	return items, next, nil
+}
+
+func (s *Service) Count(ctx context.Context, userID uuid.UUID) (groups int, members int, err error) {
+	groups, err = data.CountGroups(ctx, s.store, userID)
+	if err != nil {
+		return 0, 0, apperr.From(err)
+	}
+	members, err = data.CountGroupMembersTotal(ctx, s.store, userID)
+	if err != nil {
+		return 0, 0, apperr.From(err)
+	}
+	return groups, members, nil
 }
 
 func (s *Service) Get(ctx context.Context, userID, groupID uuid.UUID) (data.Group, error) {
@@ -168,15 +180,15 @@ func (s *Service) Archive(ctx context.Context, userID, groupID uuid.UUID, archiv
 	return s.Get(ctx, userID, groupID)
 }
 
-func (s *Service) Members(ctx context.Context, userID, groupID uuid.UUID) ([]data.GroupMember, error) {
+func (s *Service) Members(ctx context.Context, userID, groupID uuid.UUID, includeOwner bool, cursor string, limit int) ([]data.GroupMember, string, error) {
 	if _, err := s.Get(ctx, userID, groupID); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	members, err := data.ListGroupMembers(ctx, s.store, groupID)
+	members, next, err := data.ListGroupMembers(ctx, s.store, groupID, includeOwner, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return members, nil
+	return members, next, nil
 }
 
 func (s *Service) SetRole(ctx context.Context, actorID, groupID, targetID uuid.UUID, role string) error {
@@ -324,19 +336,19 @@ func (s *Service) TransferOwner(ctx context.Context, actorID, groupID, targetID 
 	return s.Get(ctx, actorID, groupID)
 }
 
-func (s *Service) Invitations(ctx context.Context, actorID, groupID uuid.UUID) ([]data.Invitation, error) {
+func (s *Service) Invitations(ctx context.Context, actorID, groupID uuid.UUID, status, cursor string, limit int) ([]data.Invitation, string, error) {
 	group, err := s.Get(ctx, actorID, groupID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if group.Role != "owner" && group.Role != "admin" {
-		return nil, apperr.Forbidden("No puedes consultar las invitaciones.")
+		return nil, "", apperr.Forbidden("No puedes consultar las invitaciones.")
 	}
-	items, err := data.ListInvitations(ctx, s.store, groupID)
+	items, next, err := data.ListInvitations(ctx, s.store, groupID, status, cursor, limit)
 	if err != nil {
-		return nil, apperr.Internal(err)
+		return nil, "", apperr.From(err)
 	}
-	return items, nil
+	return items, next, nil
 }
 
 func (s *Service) Invite(ctx context.Context, actorID, groupID uuid.UUID, email string) (data.Invitation, error) {

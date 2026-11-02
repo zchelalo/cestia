@@ -222,6 +222,11 @@ paths:
       summary: Datos autorizados para el resumen inicial
       responses:
         "200": { description: Dashboard }
+  /dashboard/summary:
+    get:
+      summary: Indicadores del resumen sin descargar colecciones completas
+      responses:
+        "200": { description: "Resumen, conteo de grupos, integrantes y listas" }
   /groups/options:
     get:
       summary: Opciones paginadas de grupos accesibles para selectores
@@ -623,9 +628,21 @@ paths:
   /expenses/by-list:
     get:
       summary: Gasto real y pendiente por lista
-      parameters: [{ $ref: "#/components/parameters/ExpenseQuery" }]
+      parameters:
+        - { $ref: "#/components/parameters/ExpenseQuery" }
+        - { $ref: "#/components/parameters/PageLimit" }
+        - { $ref: "#/components/parameters/PageCursor" }
       responses:
         "200": { description: Totales por lista }
+  /expenses/by-payer:
+    get:
+      summary: Gasto real agrupado por pagador, con paginación por cursor
+      parameters:
+        - { $ref: "#/components/parameters/ExpenseQuery" }
+        - { $ref: "#/components/parameters/PageLimit" }
+        - { $ref: "#/components/parameters/PageCursor" }
+      responses:
+        "200": { description: Totales por pagador }
   /purchases:
     get:
       summary: Historial paginado de compras
@@ -732,6 +749,15 @@ components:
       name: limit
       in: query
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    PageLimit:
+      name: limit
+      in: query
+      description: Activa el modo paginado cuando está presente.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    PageCursor:
+      name: cursor
+      in: query
+      schema: { type: string }
   schemas:
     SelectOption:
       type: object
@@ -942,6 +968,7 @@ components:
         pending_count: { type: integer }
         purchased_count: { type: integer }
         unidentified_paid: { type: string }
+        max_payer_amount: { type: string }
         by_payer:
           type: array
           items:

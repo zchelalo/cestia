@@ -192,9 +192,14 @@ func (s *Server) deactivate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	user, current := currentUser(r.Context()), currentSession(r.Context())
-	items, err := s.identity.Sessions(r.Context(), user.ID)
+	page, err := parsePage(r)
 	if err != nil {
 		s.writeError(w, r, err)
+		return
+	}
+	items, next, err := s.identity.Sessions(r.Context(), user.ID, page.Cursor, page.Limit)
+	if err != nil {
+		s.writeError(w, r, pageError(err))
 		return
 	}
 	now := time.Now().UTC()
@@ -202,7 +207,7 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 	for _, session := range items {
 		views = append(views, sessionView(session, session.ID == current.ID, now))
 	}
-	s.writeJSON(w, r, http.StatusOK, views, nil)
+	s.writeJSON(w, r, http.StatusOK, views, page.pageMeta(next))
 }
 
 func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
