@@ -151,7 +151,7 @@
 @media (max-width: 900px) {
 	.shell {
 		display: block;
-		padding-bottom: 4.75rem;
+		padding-bottom: 4.25rem;
 	}
 
 	.sidebar {
@@ -192,6 +192,14 @@
 		color: var(--color-foreground);
 	}
 
+	button.mobileSignOut {
+		height: 2.75rem;
+		min-height: 2.75rem;
+		min-width: 2.75rem;
+		padding: 0;
+		width: 2.75rem;
+	}
+
 	.mobileNav {
 		position: fixed;
 		z-index: var(--z-index-third);
@@ -209,15 +217,12 @@
 	}
 
 	.mobileNavLink {
-		min-height: 3rem;
+		min-height: 2.75rem;
 		display: grid;
 		place-items: center;
-		gap: 1px;
 		border-radius: var(--border-radius-sm);
 		color: var(--color-muted);
 		text-decoration: none;
-		font-size: 0.65rem;
-		text-align: center;
 	}
 
 	.mobileNavLinkActive {
@@ -227,11 +232,5 @@
 
 	.main {
 		padding: var(--spacing-6) var(--spacing-4) var(--spacing-8);
-	}
-}
-
-@media (max-width: 380px) {
-	.mobileNavLink span {
-		display: none;
 	}
 }

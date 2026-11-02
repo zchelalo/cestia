@@ -31,7 +31,9 @@
 ### Compra personal
 
 1. Crear lista.
-2. Agregar artículos con cantidad, unidad y estimado opcional.
+2. Agregar artículos con cantidad, unidad y estimado opcional. En una lista
+   personal el artículo queda asignado automáticamente a su propietario y no se
+   ofrece un selector de responsables.
 3. Registrar compra: precio real opcional, comprador, pagador, fecha y notas.
 4. La API calcula el total y actualiza el resumen.
 5. Corregir o revertir con motivo conserva historial.
@@ -60,11 +62,17 @@
 
 Componentes principales:
 
-- `AppShell`: navegación lateral, cabecera y nav móvil.
+- `AppShell`: navegación lateral, cabecera y nav móvil de solo iconos con
+  nombres accesibles.
 - `AuthShell`: acceso/registro responsive.
 - `PageHeader`, `SummaryCard`, `States`, `Modal`, `Field`, `Button`.
 - `ActivityTimeline`.
 - Formularios de artículo, compra, corrección, reversión, lista y grupo.
+
+Las compras muestran sus atribuciones juntas y separadas por puntos: compró,
+pagó y registró. En móvil el precio se coloca debajo del contenido y alineado a
+la izquierda; en escritorio permanece a la derecha y centrado. Las barras de
+gasto por pagador ocupan el ancho completo de su fila.
 
 La lista muestra:
 
@@ -79,8 +87,8 @@ La lista muestra:
 
 Verificado en 1440×900 y 390×844; CSS contempla desde 320 px.
 
-- Móvil: una columna, nav inferior, acciones táctiles de ≥44 px, sin overflow
-  horizontal en las pantallas probadas.
+- Móvil: una columna, nav inferior solo con iconos de ≥44 px, acciones táctiles
+  de ≥44 px, sin overflow horizontal en las pantallas probadas.
 - Inputs a 16 px en móvil para evitar zoom.
 - Formularios de compra en modal tipo sheet.
 - Tablas/listas convertidas en filas legibles.
