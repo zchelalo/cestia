@@ -201,6 +201,17 @@
 	flex-shrink: 0;
 }
 
+.memberHeader {
+	align-items: center;
+	display: flex;
+	gap: var(--spacing-2);
+	justify-content: space-between;
+}
+
+.stackedRow .rowMain {
+	flex: 1 1 auto;
+}
+
 .badge {
 	display: inline-flex;
 	align-items: center;
@@ -554,6 +565,31 @@
 		flex-direction: column;
 		align-items: stretch;
 	}
+	.stackedRow {
+		align-items: stretch;
+		flex-direction: column;
+		gap: var(--spacing-3);
+	}
+	.stackedRowActions {
+		align-items: center;
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: var(--spacing-2);
+		width: 100%;
+	}
+	.stackedRowActions > button {
+		flex: 0 1 auto;
+	}
+	.groupDangerActions {
+		align-items: stretch;
+		flex-direction: column;
+	}
+	.groupDangerActions > * {
+		flex: 0 0 auto;
+	}
+	.groupDangerActions > button {
+		width: 100%;
+	}
 	.itemRow {
 		align-items: stretch;
 		flex-direction: column;
@@ -575,6 +611,9 @@
 	.inviteRow {
 		align-items: stretch;
 		flex-direction: column;
+	}
+	.inviteField {
+		flex: 0 0 auto;
 	}
 	.inviteRow > button {
 		width: 100%;

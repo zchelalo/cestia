@@ -139,3 +139,70 @@ test('group owner actions stack without overlap on mobile', async ({
   expect(boxes.every((box) => box.background !== 'rgba(0, 0, 0, 0)')).toBe(true)
   expect(boxes.every((box) => box.borderWidth === '1px')).toBe(true)
 })
+
+test('member and invitation cards stay tidy on mobile', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile layout check')
+
+  const suffix = uniqueSuffix()
+  const email = `e2e-member-cards-${suffix}@example.com`
+
+  await registerAndVerify(page, request, { name: 'Eduardo Saavedra', email })
+  await login(page, email)
+  await createGroup(page, `Integrantes ${suffix}`)
+  await page.goto(`${new URL(page.url()).pathname}/members`)
+  await page.getByLabel('Correo de la persona').waitFor()
+
+  const metrics = await page.evaluate(() => {
+    const row = document.querySelector('[class*=stackedRow]')
+    const rowBox = row.getBoundingClientRect()
+    const badge = row.querySelector('[class*=badge]')
+    const badgeBox = badge.getBoundingClientRect()
+    const meta = Array.from(row.querySelectorAll('[class*=rowMeta]')).map((node) =>
+      node.textContent?.trim() ?? '',
+    )
+    const field = document.querySelector('[class*=inviteField]')
+    const input = document.querySelector('#invite-email')
+    const inviteButton = Array.from(document.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Invitar por correo'),
+    )!
+    const fieldBox = field.getBoundingClientRect()
+    const inputBox = input.getBoundingClientRect()
+    const inviteBox = inviteButton.getBoundingClientRect()
+    const danger = document.querySelector('[class*=groupDangerActions]')
+    const transfer = Array.from(danger.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Transferir'),
+    )!
+    const muted = danger.querySelector('[class*=muted]')
+    const dangerBox = danger.getBoundingClientRect()
+    const transferBox = transfer.getBoundingClientRect()
+    const mutedBox = muted.getBoundingClientRect()
+    return {
+      badgeRightInset: Math.round(rowBox.right - badgeBox.right),
+      badgeTopInset: Math.round(badgeBox.top - rowBox.top),
+      meta,
+      fieldHeight: Math.round(fieldBox.height),
+      inputOffset: Math.round(inputBox.top - fieldBox.top),
+      buttonGap: Math.round(inviteBox.top - inputBox.bottom),
+      dangerDirection: getComputedStyle(danger).flexDirection,
+      transferWidth: Math.round(transferBox.width),
+      dangerWidth: Math.round(dangerBox.width),
+      textBelow: Math.round(mutedBox.top) >= Math.round(transferBox.bottom),
+    }
+  })
+
+  expect(metrics.badgeRightInset).toBeGreaterThanOrEqual(16)
+  expect(metrics.badgeRightInset).toBeLessThanOrEqual(18)
+  expect(metrics.badgeTopInset).toBeGreaterThanOrEqual(16)
+  expect(metrics.badgeTopInset).toBeLessThanOrEqual(18)
+  expect(metrics.meta).toHaveLength(2)
+  expect(metrics.meta.some((line) => line.startsWith('·'))).toBe(false)
+  expect(metrics.fieldHeight).toBeLessThan(90)
+  expect(metrics.inputOffset).toBeLessThanOrEqual(24)
+  expect(metrics.buttonGap).toBeLessThanOrEqual(12)
+  expect(metrics.dangerDirection).toBe('column')
+  expect(Math.abs(metrics.transferWidth - metrics.dangerWidth)).toBeLessThanOrEqual(1)
+  expect(metrics.textBelow).toBe(true)
+})

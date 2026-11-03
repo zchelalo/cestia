@@ -205,61 +205,73 @@ export function MembersPage() {
 							member.role !== "owner" &&
 							!isMe &&
 							(isOwner || member.role === "member");
+						const canChangeRole = isOwner && member.role !== "owner";
+						const hasActions = canChangeRole || canRemove;
 						return (
-							<div key={member.user_id} className={styles.row}>
+							<div
+								key={member.user_id}
+								className={`${styles.row} ${styles.stackedRow}`}
+							>
 								<span className={styles.rowMain}>
-									<span className={styles.rowTitle}>
-										{member.display_name}
-										{isMe ? " (tú)" : ""}
+									<span className={styles.memberHeader}>
+										<span className={styles.rowTitle}>
+											{member.display_name}
+											{isMe ? " (tú)" : ""}
+										</span>
+										<span
+											className={`${styles.badge} ${member.role === "owner" ? styles.badgeWarning : styles.badgePrimary}`}
+										>
+											{member.role === "owner" ? <Crown size={12} /> : null}
+											{t(`groups.${member.role}`)}
+										</span>
 									</span>
+									<span className={styles.rowMeta}>{member.email}</span>
 									<span className={styles.rowMeta}>
-										{member.email} · desde {formatDate(member.joined_at)}
+										Desde {formatDate(member.joined_at)}
 									</span>
 								</span>
-								<span className={styles.rowActions}>
+								{hasActions ? (
 									<span
-										className={`${styles.badge} ${member.role === "owner" ? styles.badgeWarning : styles.badgePrimary}`}
+										className={`${styles.rowActions} ${styles.stackedRowActions}`}
 									>
-										{member.role === "owner" ? <Crown size={12} /> : null}
-										{t(`groups.${member.role}`)}
-									</span>
-									{isOwner && member.role !== "owner" ? (
-										<Button
-											small
-											variant="quiet"
-											disabled={setRole.isPending}
-											onClick={() =>
-												setRole.mutate({
-													userId: member.user_id,
-													role: member.role === "admin" ? "member" : "admin",
-												})
-											}
-										>
-											<UserRoundCog size={14} />
-											{member.role === "admin"
-												? t("groups.makeMember")
-												: t("groups.makeAdmin")}
-										</Button>
-									) : null}
-									{canRemove ? (
-										<Button
-											small
-											variant="quiet"
-											disabled={remove.isPending}
-											onClick={() => {
-												if (
-													window.confirm(
-														`¿Eliminar a ${member.display_name} del grupo?`,
+										{canChangeRole ? (
+											<Button
+												small
+												variant="surface"
+												disabled={setRole.isPending}
+												onClick={() =>
+													setRole.mutate({
+														userId: member.user_id,
+														role: member.role === "admin" ? "member" : "admin",
+													})
+												}
+											>
+												<UserRoundCog size={14} />
+												{member.role === "admin"
+													? t("groups.makeMember")
+													: t("groups.makeAdmin")}
+											</Button>
+										) : null}
+										{canRemove ? (
+											<Button
+												small
+												variant="surface"
+												disabled={remove.isPending}
+												onClick={() => {
+													if (
+														window.confirm(
+															`¿Eliminar a ${member.display_name} del grupo?`,
+														)
 													)
-												)
-													remove.mutate(member.user_id);
-											}}
-										>
-											<UserMinus size={14} />
-											{t("groups.remove")}
-										</Button>
-									) : null}
-								</span>
+														remove.mutate(member.user_id);
+												}}
+											>
+												<UserMinus size={14} />
+												{t("groups.remove")}
+											</Button>
+										) : null}
+									</span>
+								) : null}
 							</div>
 						);
 					})}
@@ -323,7 +335,10 @@ export function MembersPage() {
 				) : (
 					<div className={styles.list}>
 						{pending.map((invitation) => (
-							<div key={invitation.id} className={styles.row}>
+							<div
+								key={invitation.id}
+								className={`${styles.row} ${styles.stackedRow}`}
+							>
 								<span className={styles.rowMain}>
 									<span className={styles.rowTitle}>{invitation.email}</span>
 									<span className={styles.rowMeta}>
@@ -331,10 +346,12 @@ export function MembersPage() {
 									</span>
 								</span>
 								{canInvite ? (
-									<span className={styles.rowActions}>
+									<span
+										className={`${styles.rowActions} ${styles.stackedRowActions}`}
+									>
 										<Button
 											small
-											variant="quiet"
+											variant="surface"
 											onClick={() => resend.mutate(invitation)}
 											disabled={resend.isPending}
 										>
@@ -342,7 +359,7 @@ export function MembersPage() {
 										</Button>
 										<Button
 											small
-											variant="quiet"
+											variant="surface"
 											onClick={() => cancel.mutate(invitation.id)}
 											disabled={cancel.isPending}
 										>
@@ -366,7 +383,10 @@ export function MembersPage() {
 
 			<section className={`${styles.card} ${styles.dangerZone}`}>
 				<h2 className={styles.cardTitle}>Acciones del grupo</h2>
-				<div className={styles.actions} style={{ marginTop: "1rem" }}>
+				<div
+					className={`${styles.actions} ${styles.groupDangerActions}`}
+					style={{ marginTop: "1rem" }}
+				>
 					{isOwner ? (
 						<Button variant="secondary" onClick={() => setTransferring(true)}>
 							<Crown size={16} />
