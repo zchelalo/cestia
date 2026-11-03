@@ -14,6 +14,7 @@ balances, divisiones, reembolsos ni liquidaciones.**
 | [architecture/api-contract.md](architecture/api-contract.md) | REST/JSON, envelope, errores, idempotencia y operaciones |
 | [product/flows-and-frontend.md](product/flows-and-frontend.md) | Flujos, pantallas, responsive, estados y sincronización |
 | [plans/mvp-implementation.md](plans/mvp-implementation.md) | Fases, estado real, validación y trabajo pendiente |
+| [runbooks/production-lightsail.md](runbooks/production-lightsail.md) | Despliegue, respaldos, SES y migración a RDS |
 
 Todas las consultas de persistencia se generan con SQLC v1.29.0 desde
 `apps/api/queries/`; `scripts/check_no_raw_sql.sh` usa análisis AST para impedir SQL manual.

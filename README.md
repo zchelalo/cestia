@@ -78,3 +78,17 @@ CESTIA_CHROMIUM_PATH=/usr/bin/chromium-browser \
 ```
 
 Los documentos de arquitectura y producto están en [`docs/`](docs/).
+
+## Infraestructura y despliegue
+
+Producción corre en una Lightsail reemplazable con PostgreSQL en disco adjunto,
+respaldos en S3 y correo por SES en `https://cestia.chelalo.me`. Terraform y los
+scripts operativos viven en [`infra/`](infra/); el runbook completo está en
+[`docs/runbooks/production-lightsail.md`](docs/runbooks/production-lightsail.md).
+
+```bash
+pnpm nx run infra:lint
+pnpm nx run infra:test   # requiere Docker
+```
+
+Los despliegues los ejecuta GitHub Actions al integrar en `main` mediante OIDC.
