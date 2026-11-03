@@ -1,0 +1,110 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: us-east-1
+      APP_DOMAIN: ${{ vars.APP_DOMAIN || 'cestia.chelalo.me' }}
+      LIGHTSAIL_INSTANCE_NAME: ${{ vars.LIGHTSAIL_INSTANCE_NAME || 'cestia-app' }}
+      LIGHTSAIL_STATIC_IP_NAME: ${{ vars.LIGHTSAIL_STATIC_IP_NAME || 'cestia-app-ip' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache-dependency-path: apps/api/go.sum
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build release
+        run: |
+          pnpm nx run api:build
+          pnpm nx run web:build
+          release_id="$(git rev-parse --short=12 HEAD)"
+          staging="$(mktemp -d)"
+          cp apps/api/bin/cestia-api apps/api/bin/cestia-migrate "$staging/"
+          cp infra/lightsail/runtime/scripts/restore-postgres.sh "$staging/"
+          cp infra/lightsail/runtime/scripts/backup-postgres.sh "$staging/"
+          cp -r apps/web/dist "$staging/web"
+          tar -czf "/tmp/cestia-${release_id}.tar.gz" -C "$staging" .
+          rm -rf "$staging"
+          tar -tzf "/tmp/cestia-${release_id}.tar.gz"
+          echo "RELEASE_ID=${release_id}" >> "$GITHUB_ENV"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: cestia-deploy-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: Resolve host and open SSH for the runner
+        run: |
+          static_ip="$(aws lightsail get-static-ip \
+            --static-ip-name "${LIGHTSAIL_STATIC_IP_NAME}" \
+            --query 'staticIp.ipAddress' --output text)"
+          runner_ip="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+          if [ -z "${static_ip}" ] || [ -z "${runner_ip}" ]; then
+            echo "could not resolve the static IP or the runner IP" >&2
+            exit 1
+          fi
+          echo "STATIC_IP=${static_ip}" >> "$GITHUB_ENV"
+          echo "RUNNER_IP=${runner_ip}" >> "$GITHUB_ENV"
+          aws lightsail put-instance-public-ports \
+            --instance-name "${LIGHTSAIL_INSTANCE_NAME}" \
+            --port-infos "[{\"fromPort\":22,\"toPort\":22,\"protocol\":\"tcp\",\"cidrs\":[\"${runner_ip}/32\"]},{\"fromPort\":80,\"toPort\":80,\"protocol\":\"tcp\",\"cidrs\":[\"0.0.0.0/0\"]},{\"fromPort\":443,\"toPort\":443,\"protocol\":\"tcp\",\"cidrs\":[\"0.0.0.0/0\"]}]"
+
+      - name: Deploy over SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/cestia-deploy
+          chmod 0600 ~/.ssh/cestia-deploy
+          ssh-keyscan -H "${STATIC_IP}" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/cestia-deploy -o BatchMode=yes \
+            infra/lightsail/runtime/scripts/deploy-release.sh \
+            "/tmp/cestia-${RELEASE_ID}.tar.gz" \
+            "ubuntu@${STATIC_IP}:/tmp/"
+          ssh -i ~/.ssh/cestia-deploy -o BatchMode=yes "ubuntu@${STATIC_IP}" \
+            "sudo bash /tmp/deploy-release.sh /tmp/cestia-${RELEASE_ID}.tar.gz ${RELEASE_ID}"
+
+      - name: Verify production health
+        run: |
+          curl --fail --silent --show-error \
+            --retry 12 --retry-delay 5 --retry-connrefused \
+            "https://${APP_DOMAIN}/api/health"
+
+      - name: Close SSH
+        if: always()
+        run: |
+          if [ -z "${RUNNER_IP:-}" ]; then
+            echo "RUNNER_IP was never resolved; the firewall was not modified" >&2
+            exit 0
+          fi
+          aws lightsail put-instance-public-ports \
+            --instance-name "${LIGHTSAIL_INSTANCE_NAME}" \
+            --port-infos '[{"fromPort":80,"toPort":80,"protocol":"tcp","cidrs":["0.0.0.0/0"]},{"fromPort":443,"toPort":443,"protocol":"tcp","cidrs":["0.0.0.0/0"]}]'

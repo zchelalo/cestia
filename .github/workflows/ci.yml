@@ -38,16 +38,29 @@ jobs:
         with:
           go-version: 1.27.1
           cache-dependency-path: apps/api/go.sum
+      - uses: hashicorp/setup-terraform@v3
       - run: pnpm install --frozen-lockfile
+      - name: Validate Terraform
+        run: |
+          terraform -chdir=infra/bootstrap init -backend=false
+          terraform -chdir=infra/bootstrap fmt -check -recursive
+          terraform -chdir=infra/bootstrap validate
+          terraform -chdir=infra/lightsail init -backend=false
+          terraform -chdir=infra/lightsail fmt -check -recursive
+          terraform -chdir=infra/lightsail validate
       - name: Dev tooling tests
         run: node --test scripts/setup-env.test.mjs
       - name: SQLC generation is reproducible
         run: pnpm nx run api:sqlc-check
       - run: pnpm nx run-many -t lint,typecheck,test,build
+      - name: Infrastructure scripts
+        run: pnpm nx run infra:lint
       - name: PostgreSQL integration
         env:
           CESTIA_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cestia_test?sslmode=disable
         run: pnpm nx run api:test-integration
+      - name: Infrastructure backup, restore and deploy
+        run: pnpm nx run infra:test
       - name: Contract
         run: npx --yes @redocly/cli@2.0.8 lint packages/api-contract/openapi.yaml
 
