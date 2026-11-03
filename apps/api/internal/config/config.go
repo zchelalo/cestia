@@ -3,6 +3,8 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -35,6 +37,10 @@ func Load() (Config, error) {
 	loadDotEnv("apps/api/.env")
 	loadDotEnv(".env")
 
+	databaseURL, err := databaseURL()
+	if err != nil {
+		return Config{}, err
+	}
 	registerLimit, err := strconv.Atoi(env("REGISTER_RATE_LIMIT", "10"))
 	if err != nil || registerLimit < 1 {
 		return Config{}, fmt.Errorf("invalid REGISTER_RATE_LIMIT")
@@ -63,7 +69,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Env:               env("APP_ENV", "development"),
 		HTTPAddr:          env("HTTP_ADDR", ":8000"),
-		DatabaseURL:       env("DATABASE_URL", "postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable"),
+		DatabaseURL:       databaseURL,
 		AppOrigin:         strings.TrimRight(env("APP_ORIGIN", "http://localhost:5173"), "/"),
 		CookieSecure:      secure,
 		SessionTTL:        ttl,
@@ -94,6 +100,45 @@ func Load() (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// databaseURL assembles the PostgreSQL DSN. An explicit DATABASE_URL wins, so
+// the migrator can override the role; otherwise production reads discrete DB_*
+// variables so the same environment files work for the local cluster and a
+// future RDS instance.
+func databaseURL() (string, error) {
+	if explicit := env("DATABASE_URL", ""); explicit != "" {
+		return explicit, nil
+	}
+
+	host := env("DB_HOST", "")
+	if host == "" {
+		return "postgres://postgres:postgres@localhost:55432/cestia?sslmode=disable", nil
+	}
+
+	port := env("DB_PORT", "5432")
+	portNumber, err := strconv.Atoi(port)
+	if err != nil || portNumber < 1 || portNumber > 65535 {
+		return "", fmt.Errorf("invalid DB_PORT: %q", port)
+	}
+	user := env("DB_USER", "")
+	if user == "" {
+		return "", fmt.Errorf("DB_USER is required when DB_HOST is set")
+	}
+
+	dsn := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, env("DB_PASS", "")),
+		Host:   net.JoinHostPort(host, port),
+		Path:   "/" + env("DB_NAME", "cestia"),
+	}
+	query := url.Values{}
+	query.Set("sslmode", env("DB_SSLMODE", "disable"))
+	if rootCert := env("DB_SSLROOTCERT", ""); rootCert != "" {
+		query.Set("sslrootcert", rootCert)
+	}
+	dsn.RawQuery = query.Encode()
+	return dsn.String(), nil
 }
 
 func env(key, fallback string) string {

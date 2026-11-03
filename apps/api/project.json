@@ -64,7 +64,7 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/api",
-        "command": "mkdir -p bin && go build -buildvcs=false -o bin/cestia-api ./cmd/api"
+        "command": "mkdir -p bin && go build -buildvcs=false -o bin/cestia-api ./cmd/api && go build -buildvcs=false -o bin/cestia-migrate ./cmd/migrate"
       },
       "outputs": [
         "{projectRoot}/bin"
