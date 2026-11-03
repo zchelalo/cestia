@@ -1,5 +1,7 @@
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
+  github_owner             = split("/", var.github_repo)[0]
+  github_repository        = split("/", var.github_repo)[1]
 }
 
 # Reuse an existing GitHub OIDC provider when the account already has one.
@@ -39,6 +41,8 @@ data "aws_iam_policy_document" "github_assume" {
       values = [
         "repo:${var.github_repo}:ref:refs/heads/main",
         "repo:${var.github_repo}:environment:${var.github_environment}",
+        "repo:${local.github_owner}@*/${local.github_repository}@*:ref:refs/heads/main",
+        "repo:${local.github_owner}@*/${local.github_repository}@*:environment:${var.github_environment}",
       ]
     }
   }
