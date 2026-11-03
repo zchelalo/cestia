@@ -1,0 +1,24 @@
+{
+  "name": "infra",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "infra",
+  "projectType": "application",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "bash -n infra/lightsail/scripts/bootstrap-instance.sh && bash -n infra/lightsail/runtime/scripts/deploy-release.sh && bash -n infra/lightsail/runtime/scripts/backup-postgres.sh && bash -n infra/lightsail/runtime/scripts/restore-postgres.sh && bash -n infra/lightsail/runtime/tests/backup_test.sh && bash -n infra/lightsail/runtime/tests/restore_test.sh && bash -n infra/lightsail/runtime/tests/deploy_test.sh && bash -n infra/lightsail/runtime/tests/real_schema_test.sh && terraform -chdir=infra/bootstrap fmt -check -recursive && terraform -chdir=infra/lightsail fmt -check -recursive"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "bash infra/lightsail/runtime/tests/backup_test.sh && bash infra/lightsail/runtime/tests/restore_test.sh && bash infra/lightsail/runtime/tests/deploy_test.sh && bash infra/lightsail/runtime/tests/real_schema_test.sh"
+      },
+      "cache": false
+    }
+  },
+  "tags": ["scope:infra"]
+}

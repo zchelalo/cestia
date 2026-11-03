@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars (gitignored). Do NOT commit real values.
+
+organization = "chelalo"
+project      = "cestia"
+cost_center  = "personal-cestia"
+aws_profile  = "default"
+aws_region   = "us-east-1"
+
+# Personal AWS account. Replace with the 12-digit account ID.
+expected_aws_account_id = "000000000000"
+
+# Globally unique and controlled by the same account.
+state_bucket_name = "cestia-terraform-state-000000000000"
+
+tags = {
+  Owner = "chelalo"
+}

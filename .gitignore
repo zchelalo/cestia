@@ -7,6 +7,15 @@ test-results/
 apps/api/bin/
 apps/api/tmp/
 apps/api/.env
+.env
+*.pem
+*.tfstate*
+.terraform/
+*.tfplan
+tfplan
+*.tfvars
+!*.tfvars.example
+infra/bootstrap/backend.tf
 *.log
 *.tsbuildinfo
 .DS_Store

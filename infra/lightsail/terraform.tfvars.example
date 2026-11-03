@@ -1,0 +1,42 @@
+# Copy to terraform.tfvars (gitignored). Do NOT commit real values.
+
+organization = "chelalo"
+project      = "cestia"
+environment  = "production"
+cost_center  = "personal-cestia"
+aws_profile  = "default"
+aws_region   = "us-east-1"
+
+# Personal AWS account. Replace with the 12-digit account ID.
+expected_aws_account_id = "000000000000"
+
+instance_name     = "cestia-app"
+instance_bundle   = "nano_3_0" # 512 MB, cheapest Linux bundle. Verify with `aws lightsail get-bundles`.
+key_pair_name     = "cestia-deploy"
+availability_zone = "us-east-1a"
+static_ip_name    = "cestia-app-ip"
+
+app_domain        = "cestia.chelalo.me"
+root_domain       = "chelalo.me"
+tls_email         = "" # Optional ACME contact address.
+ssh_allowed_cidrs = [] # Empty disables public SSH.
+
+data_disk_name    = "cestia-data"
+data_disk_size_gb = 8
+data_disk_path    = "/dev/xvdf"
+
+backup_bucket_name    = null # derives cestia-production-backups-<account-id>
+backup_retention_days = 14
+
+github_repo                  = "zchelalo/cestia"
+github_environment           = "production"
+create_github_oidc_provider  = true
+
+# Keep this below the MXN ceiling after exchange rate and taxes; AWS Budget
+# only alerts, it does not cap spending.
+budget_limit_usd = 8
+alert_email      = "you@example.com"
+
+tags = {
+  Owner = "chelalo"
+}
