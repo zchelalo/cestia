@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+export const PAGE_SIZE_OPTIONS = [3, 5, 10, 15, 20, 50] as const;
+export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
+
+const DEFAULT_PAGE_SIZE: PageSize = 3;
+
 export type CursorPage<T> = {
 	data: T[];
 	meta?: { limit: number; next_cursor?: string };
@@ -29,8 +34,12 @@ export function useCursorPage<T>({
 	queryKey,
 	refetchInterval,
 }: Params<T>) {
+	const initialPageSize = PAGE_SIZE_OPTIONS.includes(limit as PageSize)
+		? (limit as PageSize)
+		: DEFAULT_PAGE_SIZE;
 	const [cursors, setCursors] = useState<string[]>([""]);
 	const [index, setIndex] = useState(0);
+	const [pageSize, setPageSizeState] = useState<PageSize>(initialPageSize);
 	const signature = JSON.stringify(queryKey);
 	const previousSignature = useRef(signature);
 
@@ -43,14 +52,18 @@ export function useCursorPage<T>({
 
 	const cursor = cursors[index] ?? "";
 	const query = useQuery({
-		queryKey: [...queryKey, { cursor, limit }],
-		queryFn: ({ signal }) => fetchPage({ cursor, limit, signal }),
+		queryKey: [...queryKey, { cursor, pageSize }],
+		queryFn: ({ signal }) => fetchPage({ cursor, limit: pageSize, signal }),
 		enabled,
 		refetchInterval,
 		placeholderData: (previous) => previous,
 	});
 
-	const next = query.data?.meta?.next_cursor ?? "";
+	// Never reuse the previous page's cursor while a new page size or cursor is
+	// still loading.
+	const next = query.isPlaceholderData
+		? ""
+		: (query.data?.meta?.next_cursor ?? "");
 
 	const goNext = useCallback(() => {
 		if (!next) return;
@@ -63,6 +76,15 @@ export function useCursorPage<T>({
 	}, []);
 
 	const reset = useCallback(() => {
+		setCursors([""]);
+		setIndex(0);
+	}, []);
+
+	const setPageSize = useCallback((size: number) => {
+		if (!PAGE_SIZE_OPTIONS.includes(size as PageSize)) return;
+		setPageSizeState(size as PageSize);
+		// Changing the page size invalidates every cursor collected for the old
+		// size, so return to the first page in the same state update.
 		setCursors([""]);
 		setIndex(0);
 	}, []);
@@ -83,7 +105,9 @@ export function useCursorPage<T>({
 		isFetching: query.isFetching,
 		isLoading: query.isLoading,
 		items: query.data?.data ?? [],
+		pageSize,
 		refetch: query.refetch,
 		reset,
+		setPageSize,
 	};
 }

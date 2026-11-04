@@ -63,6 +63,10 @@ const resources = {
 				noResults: "Todavía no hay nada aquí.",
 				optional: "opcional",
 				error: "No fue posible completar la acción.",
+				perPage: "Por página",
+				previous: "Anterior",
+				next: "Siguiente",
+				processing: "Procesando…",
 			},
 			dashboard: {
 				title: "Tu compra, sin ruido",

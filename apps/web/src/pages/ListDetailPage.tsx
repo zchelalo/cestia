@@ -658,6 +658,8 @@ export function ListDetailPage() {
 				canGoNext={items.canGoNext}
 				canGoPrevious={items.canGoPrevious}
 				isFetching={items.isFetching}
+				pageSize={items.pageSize}
+				onPageSizeChange={items.setPageSize}
 				onNext={items.goNext}
 				onPrevious={items.goPrevious}
 			/>

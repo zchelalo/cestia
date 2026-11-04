@@ -281,6 +281,8 @@ export function MembersPage() {
 					canGoNext={members.canGoNext}
 					canGoPrevious={members.canGoPrevious}
 					isFetching={members.isFetching}
+					pageSize={members.pageSize}
+					onPageSizeChange={members.setPageSize}
 					onNext={members.goNext}
 					onPrevious={members.goPrevious}
 				/>
@@ -376,6 +378,8 @@ export function MembersPage() {
 					canGoNext={invitations.canGoNext}
 					canGoPrevious={invitations.canGoPrevious}
 					isFetching={invitations.isFetching}
+					pageSize={invitations.pageSize}
+					onPageSizeChange={invitations.setPageSize}
 					onNext={invitations.goNext}
 					onPrevious={invitations.goPrevious}
 				/>

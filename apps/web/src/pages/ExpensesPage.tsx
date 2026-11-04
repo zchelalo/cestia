@@ -210,6 +210,8 @@ export function ExpensesPage() {
 					canGoNext={byList.canGoNext}
 					canGoPrevious={byList.canGoPrevious}
 					isFetching={byList.isFetching}
+					pageSize={byList.pageSize}
+					onPageSizeChange={byList.setPageSize}
 					onNext={byList.goNext}
 					onPrevious={byList.goPrevious}
 				/>
@@ -262,6 +264,8 @@ export function ExpensesPage() {
 						canGoNext={payers.canGoNext}
 						canGoPrevious={payers.canGoPrevious}
 						isFetching={payers.isFetching}
+						pageSize={payers.pageSize}
+						onPageSizeChange={payers.setPageSize}
 						onNext={payers.goNext}
 						onPrevious={payers.goPrevious}
 					/>

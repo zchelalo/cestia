@@ -128,6 +128,8 @@ export function GroupsPage() {
 				canGoNext={groups.canGoNext}
 				canGoPrevious={groups.canGoPrevious}
 				isFetching={groups.isFetching}
+				pageSize={groups.pageSize}
+				onPageSizeChange={groups.setPageSize}
 				onNext={groups.goNext}
 				onPrevious={groups.goPrevious}
 			/>

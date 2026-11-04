@@ -169,6 +169,8 @@ export function DashboardPage() {
 					canGoNext={groups.canGoNext}
 					canGoPrevious={groups.canGoPrevious}
 					isFetching={groups.isFetching}
+					pageSize={groups.pageSize}
+					onPageSizeChange={groups.setPageSize}
 					onNext={groups.goNext}
 					onPrevious={groups.goPrevious}
 				/>
@@ -213,6 +215,8 @@ export function DashboardPage() {
 						canGoNext={lists.canGoNext}
 						canGoPrevious={lists.canGoPrevious}
 						isFetching={lists.isFetching}
+						pageSize={lists.pageSize}
+						onPageSizeChange={lists.setPageSize}
 						onNext={lists.goNext}
 						onPrevious={lists.goPrevious}
 					/>
@@ -263,6 +267,8 @@ export function DashboardPage() {
 						canGoNext={purchases.canGoNext}
 						canGoPrevious={purchases.canGoPrevious}
 						isFetching={purchases.isFetching}
+						pageSize={purchases.pageSize}
+						onPageSizeChange={purchases.setPageSize}
 						onNext={purchases.goNext}
 						onPrevious={purchases.goPrevious}
 					/>
@@ -287,6 +293,8 @@ export function DashboardPage() {
 					canGoNext={activity.canGoNext}
 					canGoPrevious={activity.canGoPrevious}
 					isFetching={activity.isFetching}
+					pageSize={activity.pageSize}
+					onPageSizeChange={activity.setPageSize}
 					onNext={activity.goNext}
 					onPrevious={activity.goPrevious}
 				/>

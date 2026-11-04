@@ -279,6 +279,8 @@ export function GroupDetailPage() {
 					canGoNext={lists.canGoNext}
 					canGoPrevious={lists.canGoPrevious}
 					isFetching={lists.isFetching}
+					pageSize={lists.pageSize}
+					onPageSizeChange={lists.setPageSize}
 					onNext={lists.goNext}
 					onPrevious={lists.goPrevious}
 				/>
@@ -296,6 +298,8 @@ export function GroupDetailPage() {
 					canGoNext={activity.canGoNext}
 					canGoPrevious={activity.canGoPrevious}
 					isFetching={activity.isFetching}
+					pageSize={activity.pageSize}
+					onPageSizeChange={activity.setPageSize}
 					onNext={activity.goNext}
 					onPrevious={activity.goPrevious}
 				/>

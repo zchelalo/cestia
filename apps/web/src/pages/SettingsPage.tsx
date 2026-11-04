@@ -303,6 +303,8 @@ export function SettingsPage() {
 					canGoNext={sessions.canGoNext}
 					canGoPrevious={sessions.canGoPrevious}
 					isFetching={sessions.isFetching}
+					pageSize={sessions.pageSize}
+					onPageSizeChange={sessions.setPageSize}
 					onNext={sessions.goNext}
 					onPrevious={sessions.goPrevious}
 				/>

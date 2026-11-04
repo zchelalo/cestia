@@ -178,6 +178,8 @@ export function PersonalListsPage() {
 				canGoNext={lists.canGoNext}
 				canGoPrevious={lists.canGoPrevious}
 				isFetching={lists.isFetching}
+				pageSize={lists.pageSize}
+				onPageSizeChange={lists.setPageSize}
 				onNext={lists.goNext}
 				onPrevious={lists.goPrevious}
 			/>

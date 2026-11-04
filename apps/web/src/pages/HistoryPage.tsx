@@ -199,6 +199,8 @@ export function HistoryPage() {
 							canGoNext={purchases.canGoNext}
 							canGoPrevious={purchases.canGoPrevious}
 							isFetching={purchases.isFetching}
+							pageSize={purchases.pageSize}
+							onPageSizeChange={purchases.setPageSize}
 							onNext={purchases.goNext}
 							onPrevious={purchases.goPrevious}
 						/>
@@ -221,6 +223,8 @@ export function HistoryPage() {
 						canGoNext={activity.canGoNext}
 						canGoPrevious={activity.canGoPrevious}
 						isFetching={activity.isFetching}
+						pageSize={activity.pageSize}
+						onPageSizeChange={activity.setPageSize}
 						onNext={activity.goNext}
 						onPrevious={activity.goPrevious}
 					/>

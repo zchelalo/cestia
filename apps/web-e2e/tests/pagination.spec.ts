@@ -8,8 +8,7 @@ import {
 test('collections paginate three at a time with stable card heights', async ({
   page,
   request,
-}, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'Desktop covers cursor pagination.')
+}) => {
   test.setTimeout(120_000)
 
   const suffix = uniqueSuffix()
@@ -47,9 +46,30 @@ test('collections paginate three at a time with stable card heights', async ({
   const listPagination = page.getByRole('navigation', {
     name: 'Paginación de mis listas',
   })
+  const pageSizeTrigger = listPagination.getByRole('button', {
+    name: 'Por página',
+  })
   await listPagination.getByRole('button', { name: 'Siguiente' }).click()
   await expect(compactRows).toHaveCount(1)
   await listPagination.getByRole('button', { name: 'Anterior' }).click()
+  await expect(compactRows).toHaveCount(3)
+
+  // Changing the page size from a later page must return to the first page.
+  await listPagination.getByRole('button', { name: 'Siguiente' }).click()
+  await expect(compactRows).toHaveCount(1)
+  await pageSizeTrigger.click()
+  await page.getByRole('option', { name: '5', exact: true }).click()
+  await expect(compactRows).toHaveCount(4)
+  await expect(pageSizeTrigger).toHaveText('5')
+  await expect(
+    listPagination.getByRole('button', { name: 'Anterior' }),
+  ).toBeDisabled()
+  await expect(
+    listPagination.getByRole('button', { name: 'Siguiente' }),
+  ).toBeDisabled()
+
+  await pageSizeTrigger.click()
+  await page.getByRole('option', { name: '3', exact: true }).click()
   await expect(compactRows).toHaveCount(3)
 
   await page.goto('/groups')
