@@ -194,6 +194,18 @@
 	overflow-wrap: anywhere;
 }
 
+.purchaseAttributions {
+	align-items: center;
+	column-gap: var(--spacing-2);
+	display: flex;
+	flex-wrap: wrap;
+	row-gap: 2px;
+}
+
+.attributionSeparator {
+	color: var(--color-border-strong);
+}
+
 .rowActions {
 	display: flex;
 	gap: var(--spacing-2);
@@ -604,6 +616,16 @@
 	}
 	.itemRowActions > button {
 		flex: 0 1 auto;
+		gap: var(--spacing-1);
+		padding: 0 var(--spacing-2);
+	}
+	.purchaseAttributions {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.attributionSeparator {
+		display: none;
 	}
 	.filterItem {
 		flex: 1 1 100%;

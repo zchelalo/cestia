@@ -22,8 +22,31 @@ test('personal purchase flow stores decimal expense and buyer/payer', async ({ p
 
   await expect(page.getByText('$0.30').first()).toBeVisible()
 
+  const card = page.locator('[class*=itemRow]').first()
+  const attributions = card.locator('[class*=purchaseAttributions]').first()
+  const attributionDirection = await attributions.evaluate(
+    (node) => getComputedStyle(node).flexDirection,
+  )
+  const attributionRows = await attributions
+    .locator(':scope > span:not([aria-hidden="true"])')
+    .evaluateAll((nodes) =>
+      nodes.map((node) => Math.round(node.getBoundingClientRect().y)),
+    )
   if (testInfo.project.name === 'mobile') {
-    const card = page.locator('[class*=itemRow]').first()
+    expect(attributionDirection).toBe('column')
+    expect(new Set(attributionRows).size).toBe(attributionRows.length)
+  } else {
+    expect(attributionDirection).toBe('row')
+    expect(new Set(attributionRows).size).toBe(1)
+  }
+  await expect(
+    card.getByRole('button', { name: 'Corregir compra' }),
+  ).toHaveText('Corregir')
+  await expect(
+    card.getByRole('button', { name: 'Revertir compra' }),
+  ).toHaveText('Revertir')
+
+  if (testInfo.project.name === 'mobile') {
     const content = card.locator('[class*=rowMain]').first()
     const actions = card.locator('[class*=itemRowActions]').first()
     const [contentBox, actionBox, actionsDirection] = await Promise.all([

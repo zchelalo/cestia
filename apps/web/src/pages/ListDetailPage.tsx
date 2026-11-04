@@ -557,17 +557,32 @@ export function ListDetailPage() {
 												Compra {formatDate(purchase.purchased_at)} ·{" "}
 												{formatMoney(purchase.total_amount)}
 											</span>
-											<span className={styles.rowMeta}>
-												Compró {purchase.purchased_by_name}
-											</span>
-											<span className={styles.rowMeta}>
-												Pagó {purchase.paid_by_name ?? t("lists.unidentified")}
-											</span>
-											{purchase.recorded_by_name ? (
-												<span className={styles.rowMeta}>
-													Registró {purchase.recorded_by_name}
+											<span
+												className={`${styles.rowMeta} ${styles.purchaseAttributions}`}
+											>
+												<span>Compró {purchase.purchased_by_name}</span>
+												<span
+													className={styles.attributionSeparator}
+													aria-hidden="true"
+												>
+													·
 												</span>
-											) : null}
+												<span>
+													Pagó{" "}
+													{purchase.paid_by_name ?? t("lists.unidentified")}
+												</span>
+												{purchase.recorded_by_name ? (
+													<>
+														<span
+															className={styles.attributionSeparator}
+															aria-hidden="true"
+														>
+															·
+														</span>
+														<span>Registró {purchase.recorded_by_name}</span>
+													</>
+												) : null}
+											</span>
 										</>
 									) : null}
 									{item.notes ? (
@@ -624,17 +639,19 @@ export function ListDetailPage() {
 												small
 												variant="primarySoft"
 												onClick={() => openCorrection(purchase)}
+												aria-label={t("lists.correctPurchase")}
 											>
 												<ReceiptText size={14} />
-												{t("lists.correctPurchase")}
+												{t("lists.correctPurchaseShort")}
 											</Button>
 											<Button
 												small
 												variant="dangerSoft"
 												onClick={() => openReverse(purchase)}
+												aria-label={t("lists.reversePurchase")}
 											>
 												<RotateCcw size={14} />
-												{t("lists.reversePurchase")}
+												{t("lists.reversePurchaseShort")}
 											</Button>
 										</>
 									) : null}
