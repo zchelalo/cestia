@@ -116,10 +116,15 @@ const resources = {
 				noPrice: "Sin precio",
 				unidentified: "No identificado",
 				correctPurchase: "Corregir compra",
+				correctPurchaseShort: "Corregir",
 				reversePurchase: "Revertir compra",
+				reversePurchaseShort: "Revertir",
 				correctionReason: "Motivo de la corrección",
 				reverseReason: "Motivo de la reversión",
 				readOnlyArchived: "Esta lista está archivada y es de solo lectura.",
+				deleteItem: "Eliminar artículo",
+				deleteItemBody:
+					"¿Eliminar {{name}}? Las compras históricas se conservarán.",
 			},
 			groups: {
 				title: "Grupos",
@@ -151,6 +156,15 @@ const resources = {
 				expired: "Expirada",
 				resend: "Reenviar",
 				cancelInvite: "Cancelar",
+				removeMember: "Eliminar integrante",
+				removeMemberBody:
+					"¿Eliminar a {{name}} del grupo? Perderá acceso a sus listas.",
+				leaveTitle: "Abandonar grupo",
+				leaveBody: "¿Abandonar este grupo? Perderás acceso a sus listas.",
+				transferConfirmTitle: "Transferir propiedad",
+				transferConfirmBody:
+					"¿Transferir la propiedad a {{name}}? Tú quedarás como admin.",
+				transferBack: "Elegir otra persona",
 			},
 			expenses: {
 				title: "Gastos",
@@ -190,6 +204,10 @@ const resources = {
 				saved: "Cambios guardados.",
 				deactivateWarning:
 					"Esta acción requiere transferir tus grupos primero.",
+				deactivateTitle: "Desactivar cuenta",
+				deactivateBody:
+					"Escribe tu contraseña para desactivar la cuenta. Esta acción cerrará todas tus sesiones.",
+				deactivatePassword: "Contraseña actual",
 			},
 			invitation: {
 				title: "Invitación a un grupo",

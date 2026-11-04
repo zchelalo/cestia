@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Button } from "@/components/Button";
 import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input } from "@/components/Field";
+import { ConfirmDialog } from "@/components/molecules/confirm-dialog";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
@@ -30,8 +31,12 @@ const passwordSchema = z.object({
 	current_password: z.string().min(1, "Ingresa tu contraseña actual."),
 	new_password: z.string().min(12, "Usa al menos 12 caracteres.").max(72),
 });
+const deactivateSchema = z.object({
+	password: z.string().min(1, "Ingresa tu contraseña."),
+});
 type Profile = z.infer<typeof profileSchema>;
 type Password = z.infer<typeof passwordSchema>;
+type Deactivate = z.infer<typeof deactivateSchema>;
 
 export function SettingsPage() {
 	const { t } = useTranslation();
@@ -40,6 +45,8 @@ export function SettingsPage() {
 	const { data: me } = useSession();
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
+	const [deactivateOpen, setDeactivateOpen] = useState(false);
+	const [deactivateError, setDeactivateError] = useState("");
 	const sessions = useCursorPage<Session>({
 		queryKey: ["sessions"],
 		fetchPage: pageFetcher<Session>("/api/v1/me/sessions"),
@@ -55,6 +62,10 @@ export function SettingsPage() {
 	const passwordForm = useForm<Password>({
 		resolver: zodResolver(passwordSchema),
 		defaultValues: { current_password: "", new_password: "" },
+	});
+	const deactivateForm = useForm<Deactivate>({
+		resolver: zodResolver(deactivateSchema),
+		defaultValues: { password: "" },
 	});
 	const updateProfile = useMutation({
 		mutationFn: (values: Profile) =>
@@ -102,7 +113,9 @@ export function SettingsPage() {
 			await navigate({ to: "/sign-in" });
 		},
 		onError: (cause) =>
-			setError(cause instanceof Error ? cause.message : t("common.error")),
+			setDeactivateError(
+				cause instanceof Error ? cause.message : t("common.error"),
+			),
 	});
 
 	const localeCatalog = useLocalSelectOptions([
@@ -130,13 +143,6 @@ export function SettingsPage() {
 				onRetry={() => sessions.refetch()}
 			/>
 		);
-
-	async function deactivateAccount() {
-		const password = window.prompt(
-			"Escribe tu contraseña para desactivar la cuenta. Esta acción cerrará todas tus sesiones.",
-		);
-		if (password) deactivate.mutate(password);
-	}
 
 	return (
 		<div className={styles.page}>
@@ -316,13 +322,42 @@ export function SettingsPage() {
 				<Button
 					variant="danger"
 					style={{ marginTop: "1rem" }}
-					onClick={deactivateAccount}
+					onClick={() => {
+						deactivateForm.reset();
+						setDeactivateError("");
+						setDeactivateOpen(true);
+					}}
 					disabled={deactivate.isPending}
 				>
 					<Trash2 size={16} />
 					{t("settings.deactivate")}
 				</Button>
 			</section>
+
+			{deactivateOpen ? (
+				<ConfirmDialog
+					title={t("settings.deactivateTitle")}
+					description={t("settings.deactivateBody")}
+					confirmLabel={t("settings.deactivate")}
+					pending={deactivate.isPending}
+					error={deactivateError || null}
+					onCancel={() => setDeactivateOpen(false)}
+					onConfirm={deactivateForm.handleSubmit((values) =>
+						deactivate.mutate(values.password),
+					)}
+				>
+					<Field
+						label={t("settings.deactivatePassword")}
+						error={deactivateForm.formState.errors.password?.message}
+					>
+						<Input
+							type="password"
+							autoComplete="current-password"
+							{...deactivateForm.register("password")}
+						/>
+					</Field>
+				</ConfirmDialog>
+			) : null}
 		</div>
 	);
 }

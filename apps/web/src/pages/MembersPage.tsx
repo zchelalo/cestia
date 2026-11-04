@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/Button";
 import { CursorPagination } from "@/components/CursorPagination";
 import { Modal } from "@/components/Modal";
+import { ConfirmDialog } from "@/components/molecules/confirm-dialog";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState, LoadingState } from "@/components/States";
 import styles from "@/pages/Page.module.css";
@@ -31,6 +32,9 @@ export function MembersPage() {
 	const [error, setError] = useState("");
 	const [message, setMessage] = useState("");
 	const [transferring, setTransferring] = useState(false);
+	const [removal, setRemoval] = useState<Member | null>(null);
+	const [leaveOpen, setLeaveOpen] = useState(false);
+	const [transferTarget, setTransferTarget] = useState<Member | null>(null);
 	const group = useQuery({
 		queryKey: ["group", groupId],
 		queryFn: () => apiData<Group>(`/api/v1/groups/${groupId}`),
@@ -96,7 +100,10 @@ export function MembersPage() {
 			apiData(`/api/v1/groups/${groupId}/members/${userId}`, {
 				method: "DELETE",
 			}),
-		onSuccess: refresh,
+		onSuccess: async () => {
+			setRemoval(null);
+			await refresh();
+		},
 		onError: (cause) =>
 			setError(cause instanceof Error ? cause.message : t("common.error")),
 	});
@@ -130,6 +137,7 @@ export function MembersPage() {
 			}),
 		onSuccess: async () => {
 			setTransferring(false);
+			setTransferTarget(null);
 			await refresh();
 			await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
 		},
@@ -258,12 +266,8 @@ export function MembersPage() {
 												variant="surface"
 												disabled={remove.isPending}
 												onClick={() => {
-													if (
-														window.confirm(
-															`¿Eliminar a ${member.display_name} del grupo?`,
-														)
-													)
-														remove.mutate(member.user_id);
+													remove.reset();
+													setRemoval(member);
 												}}
 											>
 												<UserMinus size={14} />
@@ -401,12 +405,8 @@ export function MembersPage() {
 						<Button
 							variant="danger"
 							onClick={() => {
-								if (
-									window.confirm(
-										"¿Abandonar este grupo? Perderás acceso a sus listas.",
-									)
-								)
-									leave.mutate();
+								leave.reset();
+								setLeaveOpen(true);
 							}}
 							disabled={leave.isPending}
 						>
@@ -421,44 +421,113 @@ export function MembersPage() {
 			{transferring ? (
 				<Modal
 					title={t("groups.transfer")}
-					onClose={() => setTransferring(false)}
+					onClose={() => {
+						if (transfer.isPending) return;
+						setTransferring(false);
+						setTransferTarget(null);
+					}}
+					closeDisabled={transfer.isPending}
 				>
-					<p className={styles.muted}>
-						Elige a la persona que será propietaria. Tú quedarás como admin.
-					</p>
-					<div className={styles.list}>
-						{transferCandidates.items.map((member) => (
-							<button
-								key={member.user_id}
-								type="button"
-								className={styles.row}
-								style={{ cursor: "pointer", textAlign: "left" }}
-								onClick={() => {
-									if (
-										window.confirm(
-											`¿Transferir la propiedad a ${member.display_name}?`,
-										)
-									)
-										transfer.mutate(member.user_id);
-								}}
-							>
-								<span className={styles.rowMain}>
-									<span className={styles.rowTitle}>{member.display_name}</span>
-									<span className={styles.rowMeta}>{member.email}</span>
-								</span>
-								<Crown size={17} />
-							</button>
-						))}
-					</div>
-					<CursorPagination
-						label="Paginación de candidatos a propietario"
-						canGoNext={transferCandidates.canGoNext}
-						canGoPrevious={transferCandidates.canGoPrevious}
-						isFetching={transferCandidates.isFetching}
-						onNext={transferCandidates.goNext}
-						onPrevious={transferCandidates.goPrevious}
-					/>
+					{transferTarget ? (
+						<>
+							<p className={styles.muted}>
+								{t("groups.transferConfirmBody", {
+									name: transferTarget.display_name,
+								})}
+							</p>
+							{transfer.error ? (
+								<div className={styles.error} role="alert">
+									{transfer.error instanceof Error
+										? transfer.error.message
+										: t("common.error")}
+								</div>
+							) : null}
+							<div className={styles.formActions}>
+								<Button
+									variant="secondary"
+									onClick={() => setTransferTarget(null)}
+									disabled={transfer.isPending}
+									autoFocus
+								>
+									{t("groups.transferBack")}
+								</Button>
+								<Button
+									variant="danger"
+									onClick={() => transfer.mutate(transferTarget.user_id)}
+									disabled={transfer.isPending}
+								>
+									{transfer.isPending
+										? t("common.processing")
+										: t("groups.transfer")}
+								</Button>
+							</div>
+						</>
+					) : (
+						<>
+							<p className={styles.muted}>
+								Elige a la persona que será propietaria. Tú quedarás como admin.
+							</p>
+							<div className={styles.list}>
+								{transferCandidates.items.map((member) => (
+									<button
+										key={member.user_id}
+										type="button"
+										className={styles.row}
+										style={{ cursor: "pointer", textAlign: "left" }}
+										onClick={() => {
+											transfer.reset();
+											setTransferTarget(member);
+										}}
+									>
+										<span className={styles.rowMain}>
+											<span className={styles.rowTitle}>
+												{member.display_name}
+											</span>
+											<span className={styles.rowMeta}>{member.email}</span>
+										</span>
+										<Crown size={17} />
+									</button>
+								))}
+							</div>
+							<CursorPagination
+								label="Paginación de candidatos a propietario"
+								canGoNext={transferCandidates.canGoNext}
+								canGoPrevious={transferCandidates.canGoPrevious}
+								isFetching={transferCandidates.isFetching}
+								pageSize={transferCandidates.pageSize}
+								onPageSizeChange={transferCandidates.setPageSize}
+								onNext={transferCandidates.goNext}
+								onPrevious={transferCandidates.goPrevious}
+							/>
+						</>
+					)}
 				</Modal>
+			) : null}
+
+			{removal ? (
+				<ConfirmDialog
+					title={t("groups.removeMember")}
+					description={t("groups.removeMemberBody", {
+						name: removal.display_name,
+					})}
+					confirmLabel={t("groups.remove")}
+					pending={remove.isPending}
+					error={remove.error instanceof Error ? remove.error.message : null}
+					onCancel={() => setRemoval(null)}
+					onConfirm={() => remove.mutate(removal.user_id)}
+				/>
+			) : null}
+
+			{leaveOpen ? (
+				<ConfirmDialog
+					title={t("groups.leaveTitle")}
+					description={t("groups.leaveBody")}
+					confirmLabel={t("groups.leave")}
+					pending={leave.isPending}
+					error={leave.error instanceof Error ? leave.error.message : null}
+					onCancel={() => setLeaveOpen(false)}
+					onConfirm={() => leave.mutate()}
+				/>
 			) : null}
 		</div>
 	);

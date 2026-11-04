@@ -20,6 +20,7 @@ import { Button } from "@/components/Button";
 import { CursorPagination } from "@/components/CursorPagination";
 import { Field, Input, Textarea } from "@/components/Field";
 import { Modal } from "@/components/Modal";
+import { ConfirmDialog } from "@/components/molecules/confirm-dialog";
 import { DateTimeInput } from "@/components/molecules/input-date";
 import { Select } from "@/components/molecules/select";
 import { PageHeader } from "@/components/PageHeader";
@@ -93,6 +94,7 @@ type Dialog =
 	| { type: "purchase"; item: ShoppingItem }
 	| { type: "correction"; purchase: Purchase }
 	| { type: "reverse"; purchase: Purchase }
+	| { type: "deleteItem"; item: ShoppingItem }
 	| { type: "list" }
 	| null;
 
@@ -194,7 +196,10 @@ export function ListDetailPage() {
 			apiData(`/api/v1/items/${item.id}?expected_version=${item.version}`, {
 				method: "DELETE",
 			}),
-		onSuccess: refresh,
+		onSuccess: async () => {
+			setDialog(null);
+			await refresh();
+		},
 		onError: (cause) =>
 			setMessage(cause instanceof Error ? cause.message : t("common.error")),
 	});
@@ -595,12 +600,8 @@ export function ListDetailPage() {
 													small
 													variant="quiet"
 													onClick={() => {
-														if (
-															window.confirm(
-																`¿Eliminar ${item.name}? Las compras históricas se conservarán.`,
-															)
-														)
-															deleteItem.mutate(item);
+														deleteItem.reset();
+														setDialog({ type: "deleteItem", item });
 													}}
 													aria-label={t("common.delete")}
 												>
@@ -1144,6 +1145,20 @@ export function ListDetailPage() {
 						</div>
 					</form>
 				</Modal>
+			) : null}
+
+			{dialog?.type === "deleteItem" ? (
+				<ConfirmDialog
+					title={t("lists.deleteItem")}
+					description={t("lists.deleteItemBody", { name: dialog.item.name })}
+					confirmLabel={t("common.delete")}
+					pending={deleteItem.isPending}
+					error={
+						deleteItem.error instanceof Error ? deleteItem.error.message : null
+					}
+					onCancel={() => setDialog(null)}
+					onConfirm={() => deleteItem.mutate(dialog.item)}
+				/>
 			) : null}
 		</div>
 	);
