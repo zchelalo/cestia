@@ -70,9 +70,11 @@ Componentes principales:
 - Formularios de artículo, compra, corrección, reversión, lista y grupo.
 
 Las compras muestran sus atribuciones juntas y separadas por puntos: compró,
-pagó y registró. En móvil el precio se coloca debajo del contenido y alineado a
-la izquierda; en escritorio permanece a la derecha y centrado. Las barras de
-gasto por pagador ocupan el ancho completo de su fila.
+pagó y registró. En escritorio comparten una línea; en móvil se apilan. El
+precio se coloca debajo del contenido en móvil y a la derecha y centrado en
+escritorio. Las acciones de una compra usan etiquetas cortas (Editar, Corregir,
+Revertir) para caber en la tarjeta, mientras los modales conservan los títulos
+completos. Las barras de gasto por pagador ocupan el ancho completo de su fila.
 
 La lista muestra:
 
@@ -106,14 +108,18 @@ Verificado en 1440×900 y 390×844; CSS contempla desde 320 px.
 - Polling de listas compartidas cada 15 s y resumen grupal cada 30 s; refetch al
   enfocar.
 - No hay offline ni service worker que guarde datos privados.
-- E2E cubre autenticación, registro/verificación, compra personal en escritorio y móvil, corrección/reversión y colaboración grupal.
+- E2E cubre autenticación, registro/verificación, compra personal en escritorio y móvil, corrección/reversión, colaboración grupal, paginación con selector de tamaño y confirmaciones propias.
 
 ## Estados de interfaz
 
 - Carga, error con reintento y vacío.
 - Solo lectura para archivo.
 - Errores de versión sin destruir el formulario.
-- Confirmación antes de eliminar integrante, revertir o salir.
+- Confirmación antes de eliminar integrante, eliminar artículo, revertir o salir.
+- Confirmaciones y solicitud de contraseña en modales propios; no se usan
+  diálogos nativos del navegador.
+- Paginación por cursor con selector de tamaño (3, 5, 10, 15, 20 o 50) por
+  colección; cambiar el tamaño vuelve a la primera página.
 - Avisos explícitos de que los pagos no son deudas.
 - Badges de rol/propiedad y estado de invitación.
 - `gasto real conocido` y contadores de datos faltantes.
